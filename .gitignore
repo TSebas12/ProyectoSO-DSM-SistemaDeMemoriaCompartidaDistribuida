@@ -1,0 +1,53 @@
+# ============================================================
+# Archivos que NO deben versionarse
+# Proyecto IC-6600 — Sistema DSM
+# ============================================================
+
+# --- Material del curso (no redistribuir) -------------------
+# El enunciado es material del profesor; se conserva localmente.
+20261027 - Proyecto SO - Sistema DSM.pdf
+
+# --- Configuración local ------------------------------------
+# dsm.conf puede contener IPs y rutas de cada máquina.
+config/dsm.conf
+*.local.conf
+
+# --- Compilación --------------------------------------------
+build/
+bin/
+obj/
+out/
+*.o
+*.a
+*.so
+*.so.*
+*.d
+*.exe
+*.out
+dsm-node
+dsm-cli
+
+# --- Resultados y logs --------------------------------------
+logs/
+*.log
+results/*
+!results/README.md
+core
+core.*
+
+# --- Editores y sistema operativo ---------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Entornos y temporales ----------------------------------
+.env
+venv/
+__pycache__/
+*.tmp
+*.bak

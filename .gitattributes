@@ -1,0 +1,9 @@
+# Normaliza finales de línea para evitar ruido entre Windows y Linux.
+* text=auto eol=lf
+
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.zip binary
