@@ -7,6 +7,11 @@
 # El enunciado es material del profesor; se conserva localmente.
 20261027 - Proyecto SO - Sistema DSM.pdf
 
+# --- PDF de entrega con datos personales --------------------
+# La copia con carné, profesor e institución se conserva localmente;
+# al repositorio va la versión pública (01_Entregable_1_Diseno.pdf).
+Entregable_1/SO.2026 - Entregable 1 Proyecto - *.pdf
+
 # --- Configuración local ------------------------------------
 # dsm.conf puede contener IPs y rutas de cada máquina.
 config/dsm.conf
