@@ -1,31 +1,22 @@
-# ============================================================
-# Makefile provisional - parte de Sebastian Aguero Brenes
-# Proyecto IC-6600 - Sistema de Memoria Compartida Distribuida
-#
-# Solo compila los modulos de Sebastian, sin enlazar: todavia no
-# existen runtime.c, dsm_api.c ni la capa de red. Cuando Jose Daniel
-# agregue su parte, el Makefile definitivo va en la raiz del repo y
-# este archivo se elimina.
-#
-# Uso:  make check      compila los 5 modulos a objetos
-#       make clean      borra build/
-# ============================================================
-
 CC       ?= gcc
 CFLAGS   ?= -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g
 CPPFLAGS += -Iinclude
+LDFLAGS  ?=
+LDLIBS   ?= -lpthread
 
 BUILD := build
-SRC   := src/sync.c src/stats.c src/memory.c src/fault.c src/coherence.c
-OBJ   := $(patsubst src/%.c,$(BUILD)/%.o,$(SRC))
-HDR   := $(wildcard include/*.h)
+SRC := src/sync.c src/stats.c src/memory.c src/fault.c src/coherence.c \
+       src/config.c src/protocol.c src/log.c src/net.c src/dsm_api.c \
+       src/runtime.c src/demo_page.c
+OBJ := $(patsubst src/%.c,$(BUILD)/%.o,$(SRC))
+HDR := $(wildcard include/*.h)
 
 .PHONY: all check clean
 
-all: check
+all: check dsm_node dsmctl
 
 check: $(OBJ)
-	@echo "==> Los 5 modulos compilan sin errores."
+	@echo "==> Modulos compilan sin errores."
 
 $(BUILD)/%.o: src/%.c $(HDR) | $(BUILD)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
@@ -33,5 +24,17 @@ $(BUILD)/%.o: src/%.c $(HDR) | $(BUILD)
 $(BUILD):
 	@mkdir -p $(BUILD)
 
+dsm_node: $(OBJ) $(BUILD)/node_main.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJ) $(BUILD)/node_main.o $(LDLIBS)
+
+dsmctl: $(OBJ) $(BUILD)/ctl_main.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJ) $(BUILD)/ctl_main.o $(LDLIBS)
+
+$(BUILD)/node_main.o: src/node_main.c $(HDR) | $(BUILD)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+
+$(BUILD)/ctl_main.o: src/ctl_main.c $(HDR) | $(BUILD)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+
 clean:
-	@rm -rf $(BUILD)
+	@rm -rf $(BUILD) dsm_node dsmctl
