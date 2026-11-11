@@ -33,7 +33,7 @@ El objetivo es aplicar conceptos de sistemas operativos —memoria virtual, pagi
 | Concurrencia | Pthreads, mutex, semáforos POSIX y variables atómicas |
 | Fallos de página | `mmap` + `mprotect` + `SIGSEGV` con `SA_SIGINFO` |
 | Nodos | 4 ideales, 2 mínimo |
-| Puertos | 4 por nodo dentro de `50000–50099` |
+| Puertos | 4 por nodo dentro de `27300–27399` |
 | Interfaces | CLI y web básica de consulta |
 
 ## Arquitectura

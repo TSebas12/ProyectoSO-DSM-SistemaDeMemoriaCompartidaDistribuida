@@ -207,7 +207,7 @@ También obliga a resolver problemas reales de ingeniería: condiciones de carre
 - Los nodos ejecutan Linux de 64 bits con GCC y Pthreads.
 - Todos los nodos usan el mismo archivo de configuración o una copia idéntica.
 - La red del laboratorio permite conexiones TCP entre los equipos y los puertos configurados.
-- El rango de puertos asignado es de 100 puertos: `50000–50099` (a validar en el laboratorio).
+- El rango de puertos asignado es de 100 puertos: `27300–27399` (pareja #3).
 - El tamaño de página por defecto es 4 KB, configurable.
 - La memoria aportada por nodo es 1 MB por defecto, configurable.
 - Se buscan 4 nodos ideales para la demo, con mínimo 2.
@@ -1317,18 +1317,18 @@ Al cerrar el nodo:
 
 ### 9.2 Direcciones y puertos
 
-Cada nodo usa cuatro puertos dentro del rango asignado `50000–50099`:
+Cada nodo usa cuatro puertos dentro del rango asignado `27300–27399`:
 
 | Puerto | Uso | Fórmula |
 |---|---|---|
-| `listen_port` | Mensajes del protocolo DSM. | `50000 + 4 * node_id` |
-| `control_port` | Órdenes administrativas y CLI remota. | `50000 + 4 * node_id + 1` |
-| `heartbeat_port` | Latidos y detección de fallos. | `50000 + 4 * node_id + 2` |
-| `web_port` | Interfaz web de consulta. | `50000 + 4 * node_id + 3` |
+| `listen_port` | Mensajes del protocolo DSM. | `27300 + 4 * node_id` |
+| `control_port` | Órdenes administrativas y CLI remota. | `27300 + 4 * node_id + 1` |
+| `heartbeat_port` | Latidos y detección de fallos. | `27300 + 4 * node_id + 2` |
+| `web_port` | Interfaz web de consulta. | `27300 + 4 * node_id + 3` |
 
-Con 4 nodos se usan los puertos `50000–50015`. El rango completo permite hasta 25 nodos con 4 puertos cada uno. El número máximo de nodos del diseño es **16**, por lo que el rango es suficiente.
+Con 4 nodos se usan los puertos `27300–27315`. El rango completo permite hasta 25 nodos con 4 puertos cada uno. El número máximo de nodos del diseño es **16**, por lo que el rango es suficiente.
 
-> **Validación.** Al arrancar, cada nodo verifica que sus cuatro puertos estén libres. Si alguno está ocupado, aborta con un mensaje claro. El rango se puede cambiar en `dsm.conf`, pero debe caber en `50000–50099`.
+> **Validación.** Al arrancar, cada nodo verifica que sus cuatro puertos estén libres. Si alguno está ocupado, aborta con un mensaje claro. El rango se puede cambiar en `dsm.conf`, pero debe caber en `27300–27399`.
 
 ### 9.3 Hilo de escucha
 
@@ -2968,7 +2968,7 @@ node_id   = 0
 page_size = 4096
 node_memory = 1048576
 seed_host = 127.0.0.1
-seed_port = 50000
+seed_port = 27300
 ```
 
 ### 13.2 Tabla de parámetros
@@ -2978,13 +2978,13 @@ seed_port = 50000
 | `config_version` | entero | — | 1 | 1 | Versión del formato. |
 | `node_id` | entero | — | 0 | 0–15 | Identificador del nodo. |
 | `bind_address` | cadena | — | `0.0.0.0` | IPv4/IPv6 | Dirección de escucha. |
-| `listen_port` | entero | puerto | 50000 | 50000–50099 | Puerto del protocolo. |
-| `control_port` | entero | puerto | 50001 | 50000–50099 | Puerto de control. |
-| `heartbeat_port` | entero | puerto | 50002 | 50000–50099 | Puerto de latidos. |
-| `web_port` | entero | puerto | 50003 | 50000–50099 | Puerto web. |
+| `listen_port` | entero | puerto | 27300 | 27300–27399 | Puerto del protocolo. |
+| `control_port` | entero | puerto | 27301 | 27300–27399 | Puerto de control. |
+| `heartbeat_port` | entero | puerto | 27302 | 27300–27399 | Puerto de latidos. |
+| `web_port` | entero | puerto | 27303 | 27300–27399 | Puerto web. |
 | `web_enabled` | booleano | — | 1 | 0/1 | Activa la web. |
 | `seed_host` | cadena | — | `127.0.0.1` | host válido | Nodo semilla. |
-| `seed_port` | entero | puerto | 50000 | 50000–50099 | Puerto de la semilla. |
+| `seed_port` | entero | puerto | 27300 | 27300–27399 | Puerto de la semilla. |
 | `page_size` | entero | bytes | 4096 | 4096–65536, potencia de 2 | Tamaño de página. |
 | `node_memory` | entero | bytes | 1048576 | ≥ 16 páginas | Memoria aportada. |
 | `window_size` | entero | bytes | 268435456 | ≥ `node_memory` | Ventana virtual. |
@@ -3006,8 +3006,8 @@ seed_port = 50000
 | `replication_factor` | entero | — | 0 | 0–3 | Réplicas (extra 2). |
 | `checkpoint_interval_ms` | entero | ms | 0 | 0 o ≥ 1000 | Checkpoints (extra 2). |
 | `scheduler_policy` | cadena | — | `round_robin` | `round_robin`, `least_loaded` | Asignación de home. |
-| `port_range_start` | entero | puerto | 50000 | 50000 | Inicio del rango. |
-| `port_range_end` | entero | puerto | 50099 | 50099 | Fin del rango. |
+| `port_range_start` | entero | puerto | 27300 | 27300 | Inicio del rango. |
+| `port_range_end` | entero | puerto | 27399 | 27399 | Fin del rango. |
 
 ### 13.3 Ejemplo completo — nodo 0 (semilla)
 
@@ -3024,17 +3024,17 @@ node_id      = 0
 bind_address = 0.0.0.0
 
 # --- Puertos ---------------------------------------------------
-listen_port    = 50000
-control_port   = 50001
-heartbeat_port = 50002
-web_port       = 50003
+listen_port    = 27300
+control_port   = 27301
+heartbeat_port = 27302
+web_port       = 27303
 web_enabled    = 1
-port_range_start = 50000
-port_range_end   = 50099
+port_range_start = 27300
+port_range_end   = 27399
 
 # --- Semilla ---------------------------------------------------
 seed_host = 127.0.0.1
-seed_port = 50000
+seed_port = 27300
 
 # --- Memoria ---------------------------------------------------
 page_size   = 4096
@@ -3076,13 +3076,13 @@ checkpoint_interval_ms  = 0
 node_id      = 1
 bind_address = 0.0.0.0
 
-listen_port    = 50004
-control_port   = 50005
-heartbeat_port = 50006
-web_port       = 50007
+listen_port    = 27304
+control_port   = 27305
+heartbeat_port = 27306
+web_port       = 27307
 
 seed_host = 198.51.100.10
-seed_port = 50000
+seed_port = 27300
 
 page_size   = 4096
 node_memory = 1048576
@@ -3095,15 +3095,15 @@ log_file = logs/dsm-node1.log
 
 | Nodo | `listen_port` | `control_port` | `heartbeat_port` | `web_port` |
 |---:|---:|---:|---:|---:|
-| 0 | 50000 | 50001 | 50002 | 50003 |
-| 1 | 50004 | 50005 | 50006 | 50007 |
-| 2 | 50008 | 50009 | 50010 | 50011 |
-| 3 | 50012 | 50013 | 50014 | 50015 |
-| 4 | 50016 | 50017 | 50018 | 50019 |
+| 0 | 27300 | 27301 | 27302 | 27303 |
+| 1 | 27304 | 27305 | 27306 | 27307 |
+| 2 | 27308 | 27309 | 27310 | 27311 |
+| 3 | 27312 | 27313 | 27314 | 27315 |
+| 4 | 27316 | 27317 | 27318 | 27319 |
 | … | … | … | … | … |
-| 15 | 50060 | 50061 | 50062 | 50063 |
+| 15 | 27360 | 27361 | 27362 | 27363 |
 
-Los puertos `50064–50099` quedan libres para herramientas, pruebas o nodos adicionales fuera del diseño base.
+Los puertos `27364–27399` quedan libres para herramientas, pruebas o nodos adicionales fuera del diseño base.
 
 ### 13.6 Precedencia de configuración
 
@@ -3134,9 +3134,9 @@ Gana la última fuente que define la clave.
 ```text
 dsm-node --config config/dsm.conf \
          --node-id 1 \
-         --seed 198.51.100.10:50000 \
+         --seed 198.51.100.10:27300 \
          --log-level debug \
-         --web-port 50007
+         --web-port 27307
 ```
 
 | Argumento | Efecto |
@@ -3193,8 +3193,8 @@ dsm.conf: OK
   page_size      = 4096
   node_memory    = 1048576 (256 frames)
   window_size    = 268435456 (65536 pages)
-  ports          = 50000, 50001, 50002, 50003
-  seed           = 127.0.0.1:50000
+  ports          = 27300, 27301, 27302, 27303
+  seed           = 127.0.0.1:27300
 ```
 
 Este modo se usa en la demo antes de arrancar el clúster.
@@ -3203,10 +3203,10 @@ Este modo se usa en la demo antes de arrancar el clúster.
 
 | Nodo | Máquina | IP | `node_id` | Puertos |
 |---:|---|---|---:|---|
-| 0 | `[COMPLETAR: equipo]` | `[COMPLETAR: IP]` | 0 | 50000–50003 |
-| 1 | `[COMPLETAR: equipo]` | `[COMPLETAR: IP]` | 1 | 50004–50007 |
-| 2 | `[COMPLETAR: equipo]` | `[COMPLETAR: IP]` | 2 | 50008–50011 |
-| 3 | `[COMPLETAR: equipo]` | `[COMPLETAR: IP]` | 3 | 50012–50015 |
+| 0 | `[COMPLETAR: equipo]` | `[COMPLETAR: IP]` | 0 | 27300–27303 |
+| 1 | `[COMPLETAR: equipo]` | `[COMPLETAR: IP]` | 1 | 27304–27307 |
+| 2 | `[COMPLETAR: equipo]` | `[COMPLETAR: IP]` | 2 | 27308–27311 |
+| 3 | `[COMPLETAR: equipo]` | `[COMPLETAR: IP]` | 3 | 27312–27315 |
 
 > **Pendiente.** La cantidad de equipos del laboratorio no está confirmada. Si solo hay 2, los nodos 2 y 3 se ejecutan en las mismas máquinas con puertos distintos, o se reduce la demo a 2 nodos.
 
@@ -3470,7 +3470,7 @@ padded: total = 160000  → OK, menos invalidaciones
 | `U-05` | Checksum | Payload conocido | CRC32 esperado. |
 | `U-06` | Validación de configuración | Valores inválidos | Error con clave y regla. |
 | `U-07` | Parseo de `dsm.conf` | Archivo de ejemplo | Todos los campos cargados. |
-| `U-08` | Cálculo de puertos | `node_id = 3` | 50012–50015. |
+| `U-08` | Cálculo de puertos | `node_id = 3` | 27312–27315. |
 | `U-09` | Tamaños de structs | `_Static_assert` | Compila sin error. |
 | `U-10` | `dsm_strerror` | Cada código | Cadena no vacía. |
 | `U-11` | Bump allocator | Varias reservas | Offsets alineados. |
@@ -3997,10 +3997,10 @@ dsm-cli [--host HOST] [--port PORT] [--json] COMANDO [ARGS]
 ```text
 $ dsm-cli nodes
 NODE  STATE    HOST            PORT   MEMORY   LOAD   LAST_SEEN
-0     ONLINE   198.51.100.10    50000  1 MB     12%    0.4 s
-1     ONLINE   198.51.100.11    50004  1 MB     18%    0.6 s
-2     ONLINE   198.51.100.12    50008  1 MB     9%     0.5 s
-3     SUSPECT  198.51.100.13    50012  1 MB     —      4.2 s
+0     ONLINE   198.51.100.10    27300  1 MB     12%    0.4 s
+1     ONLINE   198.51.100.11    27304  1 MB     18%    0.6 s
+2     ONLINE   198.51.100.12    27308  1 MB     9%     0.5 s
+3     SUSPECT  198.51.100.13    27312  1 MB     —      4.2 s
 ```
 
 ### Anexo E — API web
@@ -4029,7 +4029,7 @@ La web es **de solo lectura** en la versión base.
       "node_id": 0,
       "state": "ONLINE",
       "host": "198.51.100.10",
-      "port": 50000,
+      "port": 27300,
       "memory_bytes": 1048576,
       "load_percent": 12,
       "last_seen_ms": 412
@@ -4038,7 +4038,7 @@ La web es **de solo lectura** en la versión base.
       "node_id": 1,
       "state": "ONLINE",
       "host": "198.51.100.11",
-      "port": 50004,
+      "port": 27304,
       "memory_bytes": 1048576,
       "load_percent": 18,
       "last_seen_ms": 601

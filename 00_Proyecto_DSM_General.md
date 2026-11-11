@@ -16,7 +16,7 @@
 | **Herramientas obligatorias** | Sockets TCP/IP, Pthreads, semáforos POSIX, `mmap`, `mprotect` y manejo de señales con `sigaction` |
 | **Fuente primaria** | `20261027 - Proyecto SO - Sistema DSM.pdf` |
 | **Repositorio Git** | Pendiente de confirmar |
-| **Versión del documento** | 1.5 |
+| **Versión del documento** | 1.6 |
 | **Fecha de elaboración** | 30 de octubre de 2026 |
 | **Estado** | Documento maestro de referencia; decisiones base confirmadas y pendientes operativos identificados |
 
@@ -30,6 +30,7 @@
 | 1.3 | 30 oct 2026 | Confirmados runtime embebido, 4 KB de página, 1 MB por nodo, 4 nodos ideales y formato académico formal para el E1. |
 | 1.4 | 30 oct 2026 | Documento general movido a la raíz; carpetas por entregable con instrucciones y estructura documental actualizada. |
 | 1.5 | 30 oct 2026 | Redactado el diseño formal del Entregable 1 en `Entregable_1/01_Entregable_1_Diseno.md`. |
+| 1.6 | 10 nov 2026 | Rango de puertos definitivo de la pareja #3: `27300–27399` (antes `50000–50099`, que era una propuesta a validar). |
 
 > [!IMPORTANT]
 > **Nota de decisiones pendientes y respuestas temporales**
@@ -38,7 +39,7 @@
 >
 > | Tema | Respuesta actual | Estado | Impacto |
 > |---|---|---|---|
-> | Rango de puertos | **100 puertos**: `50000–50099` | **Confirmado para planificación** | Validar contra el rango real del laboratorio; si cambia la base, se mantiene el esquema. |
+> | Rango de puertos | **100 puertos**: `27300–27399` | **Confirmado** | Rango asignado a la pareja **#3**. El esquema de offsets se mantiene. |
 > | Equipos del laboratorio | No asignados todavía | **Pendiente** | Afecta pruebas multi-nodo y guion de demo. |
 > | URL del repositorio Git | No entregada todavía | **Pendiente** | Es obligatoria para los entregables. |
 > | Cita de demo | PDF: 27 de noviembre; hora y laboratorio exactos pendientes | **Pendiente** | Afecta planificación final. |
@@ -1153,14 +1154,14 @@ Formato recomendado: `clave = valor`, con comentarios `#`, una sección por bloq
 | `max_nodes` | entero | — | 16 | Sí | Máximo de nodos. |
 | `node_id` | entero | — | 0 (auto) | No | ID fijo; 0 = asignado por semilla. |
 | `bind_address` | string | — | `0.0.0.0` | Sí | Interfaz de escucha. |
-| `listen_port` | entero | puerto | 50000 | Sí | Puerto TCP principal. |
+| `listen_port` | entero | puerto | 27300 | Sí | Puerto TCP principal. |
 | `seed_host` | string | — | — | Sí | Host del nodo semilla. |
-| `seed_port` | entero | puerto | 50000 | Sí | Puerto del semilla. |
-| `port_range_start` | entero | puerto | 50000 | Sí | Inicio del rango asignado a la pareja. |
-| `port_range_end` | entero | puerto | 50099 | Sí | Fin del rango. |
-| `control_port` | entero | puerto | 50001 | No | Puerto de control. |
-| `heartbeat_port` | entero | puerto | 50002 | No | Puerto de heartbeat (si se separa). |
-| `web_port` | entero | puerto | 50003 | No | Puerto HTTP local (nodo 0; offset +3). |
+| `seed_port` | entero | puerto | 27300 | Sí | Puerto del semilla. |
+| `port_range_start` | entero | puerto | 27300 | Sí | Inicio del rango asignado a la pareja. |
+| `port_range_end` | entero | puerto | 27399 | Sí | Fin del rango. |
+| `control_port` | entero | puerto | 27301 | No | Puerto de control. |
+| `heartbeat_port` | entero | puerto | 27302 | No | Puerto de heartbeat (si se separa). |
+| `web_port` | entero | puerto | 27303 | No | Puerto HTTP local (nodo 0; offset +3). |
 | `web_enabled` | booleano | — | 1 | No | Activa la web. |
 | `heartbeat_interval_ms` | entero | ms | 1000 | Sí | Intervalo de latido. |
 | `heartbeat_timeout_ms` | entero | ms | 5000 | Sí | Tiempo para declarar sospecha/caída. |
@@ -1193,18 +1194,18 @@ max_nodes = 16
 # Identidad y red
 node_id = 0
 bind_address = 0.0.0.0
-listen_port = 50000
+listen_port = 27300
 seed_host = 198.51.100.10
-seed_port = 50000
-port_range_start = 50000
-port_range_end = 50099
+seed_port = 27300
+port_range_start = 27300
+port_range_end = 27399
 
-# Puertos auxiliares (nodo 0: 50000-50003)
+# Puertos auxiliares (nodo 0: 27300-27303)
 # Fórmula: base = port_range_start + (node_id * 4)
-control_port = 50001
-heartbeat_port = 50002
+control_port = 27301
+heartbeat_port = 27302
 web_enabled = 1
-web_port = 50003
+web_port = 27303
 
 # Tiempos
 heartbeat_interval_ms = 1000
@@ -1249,7 +1250,7 @@ Si la configuración es inválida, el nodo debe fallar con un mensaje claro y no
 
 El enunciado indica que se utilizará un rango de puertos específico para cada pareja de trabajo.
 
-**Decisión del equipo:** se usará un rango de **100 puertos**, `50000–50099`. Si el laboratorio asigna otra base, solo se cambia el inicio del rango; el esquema de offsets se mantiene.
+**Decisión del equipo:** se usará el rango asignado a la pareja **#3**, de **100 puertos**: `27300–27399`. El rango es definitivo; si el laboratorio lo cambiara, solo se ajusta el inicio y el esquema de offsets se mantiene.
 
 Esquema propuesto para 100 puertos:
 
@@ -1268,7 +1269,8 @@ Esquema propuesto para 100 puertos:
 - Si hay varios nodos en la misma máquina, cada uno debe tener puertos distintos.
 - La web debe usar un puerto distinto por nodo.
 - El archivo de configuración debe documentar el rango, la fórmula y los offsets.
-- **Pendiente:** confirmar la cantidad de equipos del laboratorio y validar que `50000–50099` esté disponible en la red del laboratorio.
+- **Confirmado:** el rango `27300–27399` corresponde a la pareja #3. Antes de la demo se verifica que esté libre en la red del laboratorio.
+- **Pendiente:** confirmar la cantidad de equipos del laboratorio.
 
 ### 9.6 Recarga y reinicio
 
@@ -2455,7 +2457,7 @@ Targets sugeridos:
 | D-005 | Aplicaciones | **Confirmado** | Matrices + archivo/video; incrementos concurrentes como estrés. |
 | D-006 | Integrantes | **Confirmado** | José Daniel Monterrosa Quirós y Sebastián Aguero Brenes. |
 | D-007 | Repositorio Git | **Pendiente** | URL, ramas y política de commits por confirmar. |
-| D-008 | Puertos | **Confirmado** | 100 puertos: `50000–50099`. Validar disponibilidad en el laboratorio. |
+| D-008 | Puertos | **Confirmado** | 100 puertos de la pareja #3: `27300–27399`. |
 | D-009 | Equipos del laboratorio | **Pendiente** | Cantidad de máquinas físicas disponibles. |
 | D-010 | Web | **Confirmado** | CLI + web básica; un puerto HTTP por nodo. |
 | D-011 | Tamaño de página | **Confirmado** | 4 KB por defecto, configurable. |
@@ -2478,7 +2480,7 @@ Targets sugeridos:
 6. **Dataset:** ¿se usará un video/matriz real específico o se generará uno?
 7. **Informe final:** ¿manual de usuario separado o dentro del mismo MD?
 8. **Web:** ya está confirmada; falta definir estilo visual y si se quiere refresco automático.
-9. **Puertos:** validar que `50000–50099` esté libre en la red del laboratorio.
+9. **Puertos:** verificar que `27300–27399` (pareja #3) esté libre en la red del laboratorio antes de la demo.
 
 ### 21.3 Decisiones que no deben cambiarse a la ligera
 
