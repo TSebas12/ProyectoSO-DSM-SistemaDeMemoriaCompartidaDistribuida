@@ -29,12 +29,16 @@ out/
 *.d
 *.exe
 *.out
+dsm_node
+dsmctl
 dsm-node
 dsm-cli
 
 # --- Resultados y logs --------------------------------------
 logs/
 *.log
+# La evidencia de los entregables sí se versiona (ver §10.3 del E2).
+!evidence/**/*.log
 results/*
 !results/README.md
 core
