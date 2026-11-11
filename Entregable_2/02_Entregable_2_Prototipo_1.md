@@ -19,7 +19,7 @@
 | **Repositorio Git** | https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida |
 | **Documento base** | `Entregable_1/01_Entregable_1_Diseno.md` |
 
-> **Cómo leer este documento.** Las secciones 1 a 6 describen el prototipo y su relación con el diseño del Entregable 1 y están redactadas en su mayor parte; los marcadores `[PENDIENTE: ...]` señalan lo que depende del código y de la ejecución real. Las secciones 7 a 15 se completan durante y después de la implementación. **No se debe afirmar ningún resultado que no haya sido ejecutado y registrado.**
+> **Cómo leer este documento.** Las secciones 1 a 6 describen el prototipo y su relación con el diseño del Entregable 1 y están redactadas en su mayor parte. La sección 7 documenta los módulos ya escritos y deja marcado lo que falta. Los marcadores `[PENDIENTE: ...]` señalan siempre lo mismo: algo que depende de compilar, de ejecutar o de un módulo que todavía no existe. **No se debe afirmar ningún resultado que no haya sido ejecutado y registrado.**
 
 > **Regla de honestidad técnica.** Si una función no se implementó, se declara en la sección 11 (limitaciones) y se traslada a la sección 12 (trabajo pendiente). Un prototipo incompleto y bien documentado vale más que uno que dice funcionar y no se puede reproducir.
 
@@ -70,7 +70,7 @@ El prototipo **no incluye** todavía expulsión de páginas, aplicaciones de pru
 | 3 | Flujo de un fallo de página en el prototipo | 5.3 |
 | 4 | Diagrama de estados MSI implementado | 7.4 |
 
-> `[PENDIENTE: ajustar la numeración cuando se inserten las capturas de ejecución.]`
+> **Nota.** Las figuras 1 a 4 son diagramas de diseño. Las capturas de ejecución se numerarán a partir de la figura 5 cuando se tomen en el laboratorio (sección 15).
 
 ### 3.3 Índice de tablas
 
@@ -125,14 +125,16 @@ El Entregable 1 definió la arquitectura, el modelo de coherencia, el protocolo 
 
 | Elemento del E1 | Estado en el prototipo 1 |
 |---|---|
-| Ventana local + pool de marcos | `[PENDIENTE: implementado / parcial / no implementado]` |
-| `mmap` + `mprotect` + `sigaction` | `[PENDIENTE]` |
-| Protocolo con cabecera de 64 B | `[PENDIENTE]` |
-| MSI con directorio por página | `[PENDIENTE]` |
-| API `dsm_init` / `dsm_create` / `dsm_attach` | `[PENDIENTE]` |
-| CLI (web fuera de alcance) | `[PENDIENTE]` |
+| Ventana local + pool de marcos | Implementado: ventana de 256 MB y 256 marcos de contabilidad (sin expulsión) |
+| `mmap` + `mprotect` + `sigaction` | Implementado, incluida pila alternativa por hilo |
+| Protocolo con cabecera de 64 B | Pendiente: corresponde al módulo de red |
+| MSI con directorio por página | Implementado: MSI completo y directorio local en el nodo home |
+| API `dsm_init` / `dsm_create` / `dsm_attach` | Pendiente: corresponde al runtime y a `dsm_api.c` |
+| CLI (web fuera de alcance) | Pendiente: corresponde a `dsmctl` |
 | Aplicaciones de prueba | Fuera de alcance |
 | Extras | Fuera de alcance |
+
+> **Estado de verificación.** El código de los módulos marcados como implementados está escrito y revisado, pero **todavía no se compiló**: el equipo no tiene un entorno Linux disponible al momento de redactar esta versión. La sección 9 registra el procedimiento y la sección 10 los resultados, que se completan en el laboratorio.
 
 ### 4.4 Metodología de trabajo
 
@@ -162,7 +164,10 @@ flowchart TB
         RES["Hilo resolutor<br/>cola de fallos"]
         COH["Coherencia MSI<br/>directorio por página"]
         NET["Red TCP<br/>cabecera 64 B"]
-        CLI["CLI / estado"]
+    end
+
+    subgraph CTL["Proceso dsmctl"]
+        CLI["CLI de estado"]
     end
 
     subgraph OS["Sistema operativo"]
@@ -183,12 +188,12 @@ flowchart TB
     NET --> SOCK
     RES --> TH
     COH --> SEM
-    CLI --> COH
+    CLI -->|"consulta por el puerto de control"| NET
 ```
 
 **Figura 1.** Arquitectura de componentes del prototipo 1.
 
-> `[PENDIENTE: reemplazar por el diagrama definitivo si la implementación cambia la organización de módulos.]`
+> **Nota.** El diagrama refleja la división real de módulos: `memory.c`, `fault.c`, `coherence.c` y `sync.c` dentro del runtime, y `dsmctl` como proceso aparte que consulta el estado por el puerto de control.
 
 ### 5.2 Vista de despliegue
 
@@ -229,43 +234,46 @@ sequenceDiagram
     T->>M: lectura/escritura de página no residente
     M-->>S: SIGSEGV (si_addr)
     S->>S: calcular page_id desde si_addr
-    S->>Q: encolar fallo (sin bloquear)
-    S-->>T: return (se reintenta la instrucción)
+    S->>Q: encolar fallo (sin locks)
+    S->>S: sigsuspend (el hilo duerme)
     Q->>R: despertar
     R->>N: PAGE_REQUEST(page_id, READ)
     N->>H: solicitud
     H-->>N: PAGE_DATA + contenido
     N-->>R: datos
-    R->>M: copiar página al marco local
-    R->>M: mprotect(READ)
-    R-->>T: señalizar condición
+    R->>M: copiar por el mapeo de respaldo
+    R->>M: mprotect(READ) en la ventana
+    R-->>S: pthread_kill(SIGUSR1)
+    S-->>T: return y el kernel reintenta la instrucción
     T->>M: reintento exitoso
 ```
 
 **Figura 3.** Flujo de un fallo de página en el prototipo.
 
-> `[PENDIENTE: verificar el flujo real contra el código y ajustar el diagrama.]`
+> **Nota.** El manejador no retorna hasta que la página está publicada: duerme en `sigsuspend` y el resolutor lo despierta con `SIGUSR1`. Si la resolución falla, el contexto queda marcado y el reintento deja morir el proceso en lugar de entrar en un bucle.
 
 ### 5.4 Cambios respecto al diseño original
 
-> `[PENDIENTE: completar durante la implementación.]`
-
 | Área | Diseño del E1 | Implementación real | Motivo |
 |---|---|---|---|
-| Memoria | Ventana de 256 MB y pool de 256 marcos | `[PENDIENTE]` | `[PENDIENTE]` |
-| Red | Conexiones persistentes entre todos los nodos | `[PENDIENTE]` | `[PENDIENTE]` |
-| Coherencia | MSI con directorio distribuido | `[PENDIENTE]` | `[PENDIENTE]` |
-| Concurrencia | Jerarquía global de locks | `[PENDIENTE]` | `[PENDIENTE]` |
-| Configuración | `dsm.conf` con validación | `[PENDIENTE]` | `[PENDIENTE]` |
+| Memoria | Ventana de 256 MB y pool de 256 marcos | Ventana de 256 MB sobre `memfd` con doble mapeo; 256 marcos de contabilidad | El resolutor copia por un mapeo `RW` privado y los hilos de usuario solo ven la ventana cuando se publica el permiso |
+| Red | Conexiones persistentes entre todos los nodos | Pendiente: la define el módulo de red | Pendiente |
+| Coherencia | MSI con directorio distribuido | MSI con directorio local en el nodo home (bitmap de *sharers*); un tercero se rechaza con `OWNERSHIP_DENY` | Con dos nodos no existen terceros; la invalidación múltiple queda para el E3 |
+| Concurrencia | Jerarquía global de locks | Jerarquía `GLOBAL → OBJECT → PAGE → FRAME` verificada en ejecución | Detectar orden invertido sin costo cuando la comprobación se desactiva |
+| Configuración | `dsm.conf` con validación | Pendiente: la define el módulo de configuración | Pendiente |
 
 ### 5.5 Decisiones tomadas durante la implementación
 
-> `[PENDIENTE: una entrada por decisión, con contexto, alternativas y consecuencia.]`
-
 | # | Decisión | Alternativas consideradas | Motivo | Impacto |
 |---:|---|---|---|---|
-| D2-01 | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
-| D2-02 | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
+| D2-01 | Ventana sobre `memfd` mapeado dos veces | (a) `mmap` anónimo y `mprotect` temporal a `RW`; (b) copiar a un buffer y `memcpy` al reintentar | Con (a) otro hilo puede leer la página a medio copiar; con (b) el fallo se repetiría | La ventana nunca sale de `PROT_NONE` durante la copia; el resolutor escribe por el respaldo |
+| D2-02 | Cola de fallos como anillo sin locks | Mutex + variable de condición | Un `pthread_mutex_lock` dentro del manejador puede interbloquear si el hilo interrumpido ya tenía ese mutex | El manejador solo hace un CAS y `sem_post`, ambas operaciones seguras |
+| D2-03 | Pila alternativa por hilo, no por proceso | Una sola `sigaltstack` global | `sigaltstack` es por hilo; dos fallos simultáneos en un buffer compartido corrompen la pila | Cada hilo registrado reserva 64 KB y los libera con un destructor de `pthread_key` |
+| D2-04 | Verificación del orden de locks en ejecución | Confiar en la disciplina del programador; usar `helgrind` | `helgrind` es externo y no está en la rúbrica; la disciplina no se puede auditar | Cada lock lleva su clase y se avisa por `stderr` cuando el orden se invierte |
+| D2-05 | Directorio local en el nodo home, sin replicación | Directorio distribuido con replicación del E1 | Con dos nodos y cuatro páginas la replicación no aporta y sí añade modos de fallo | El home es punto único de decisión por página; el E3 puede replicarlo |
+| D2-06 | Bandera `failed` atómica en el contexto del hilo | Reintentar indefinidamente | Un fallo irresoluble dejaría al hilo en un bucle de `SIGSEGV` | Al fallar la resolución, el reintento deja morir el proceso con la señal original |
+
+> **Nota.** Estas decisiones son las que el código realmente aplica. Las que dependan de los módulos de red y configuración se agregan cuando esos módulos existan.
 
 ---
 
@@ -287,8 +295,8 @@ sequenceDiagram
 |---:|---|---|---|---|
 | C-01 | Rango de puertos | `50000–50099` (propuesta a validar) | `27300–27399` (pareja #3) | Rango asignado oficialmente por el curso. |
 | C-02 | Número de nodos de la demo | 4 ideales | 2 | Alcance del prototipo 1. |
-| C-03 | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
-| C-04 | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
+| C-03 | Copia de una página al resolver un fallo | `PROT_NONE` → copiar → publicar permisos, sin especificar el mecanismo | Doble mapeo de la misma página: ventana en `PROT_NONE` y respaldo en `RW` | Sin el respaldo habría que abrir la ventana antes de copiar y otro hilo podría leer datos a medias. |
+| C-04 | Cola de fallos entre el manejador y el resolutor | No se especificaba | Anillo sin locks y `sigsuspend` en el hilo que falla | Un mutex dentro del manejador puede interbloquear si el hilo interrumpido ya lo tenía tomado. |
 
 **Tabla 2.** Cambios respecto al Entregable 1.
 
@@ -298,16 +306,20 @@ sequenceDiagram
 
 **C-02 — Número de nodos.** El prototipo 1 debe demostrar el mecanismo, no la escala. Dos nodos son suficientes para probar transferencia remota e invalidación, y reducen el riesgo de fallos de red y de configuración.
 
-> `[PENDIENTE: agregar el motivo de cada cambio C-03 en adelante.]`
+**C-03 — Copia de una página.** El E1 decía copiar con la página en `PROT_NONE` y publicar los permisos después, pero no explicaba cómo escribir sin permiso. La solución es un `memfd` mapeado dos veces: la ventana queda en `PROT_NONE` y un segundo mapeo de las mismas páginas físicas queda en `RW`. El resolutor copia por el respaldo y después publica el permiso en la ventana, así que ningún hilo de usuario observa el contenido a medio escribir.
+
+**C-04 — Cola de fallos.** El E1 describía una cola «lock-free o con un mutex probado como seguro», sin decidir. Se eligió el anillo sin locks porque la alternativa correcta —un mutex tomado dentro del manejador— depende de que el hilo interrumpido no lo tuviera, y eso no se puede garantizar. El hilo que falla se duerme con `sigsuspend` y el resolutor lo despierta con `pthread_kill`.
+
+> **Pendiente.** Los cambios asociados a los módulos de red y configuración se agregan cuando esos módulos estén implementados.
 
 ### 6.4 Impacto en API, protocolo, configuración y estructuras
 
 | Componente | Impacto |
 |---|---|
-| **API** | `[PENDIENTE: ¿se mantuvieron las firmas del E1? ¿alguna función quedó fuera del prototipo?]` |
-| **Protocolo** | `[PENDIENTE: ¿se implementaron todos los mensajes? ¿algún código o payload cambió?]` |
+| **API** | Las firmas del E1 se mantienen como contrato. En esta versión están implementados los módulos internos que el API usará (`dsm_memory_*`, `dsm_fault_*`, `dsm_coherence_*`); las funciones públicas `dsm_init`, `dsm_create`, `dsm_attach` y `dsm_detach` quedan en `dsm_api.c`, todavía sin escribir. |
+| **Protocolo** | Los códigos de mensaje del E1 se conservan tal cual en `dsm_msg_type_t`. La cabecera de 64 B y su serialización son responsabilidad del módulo de red, que aún no existe. |
 | **Configuración** | Cambia el valor por defecto del rango de puertos a `27300–27399`; el resto de claves se mantiene. |
-| **Estructuras** | `[PENDIENTE: comparar tamaños reales con los del E1 (cabecera 64 B, config 704 B).]` |
+| **Estructuras** | Se mantienen los tamaños del E1 en los módulos implementados: `dsm_local_page_t` 56 B, `dsm_frame_t` 40 B, `dsm_directory_entry_t` 64 B y `dsm_stats_t` 128 B, verificados con `_Static_assert`. La cabecera de 64 B y `dsm_config_t` de 704 B pertenecen a los módulos pendientes. |
 | **Compatibilidad** | El prototipo 1 no es compatible con el diseño del E1 en el valor de los puertos, pero sí en el esquema. |
 
 ---
@@ -321,17 +333,74 @@ sequenceDiagram
 | Aspecto | Detalle |
 |---|---|
 | Archivos | `src/memory.c`, `src/fault.c`, `include/dsm_memory.h`, `include/dsm_fault.h` |
-| Funciones principales | `[PENDIENTE]` |
+| Funciones principales | `dsm_memory_init`, `dsm_memory_addr_to_page`, `dsm_memory_page_get_or_create`, `dsm_memory_protect`, `dsm_memory_copy_in/out`, `dsm_fault_install`, `dsm_segv_handler` |
 | Tamaño de página | 4096 B |
-| Ventana | `[PENDIENTE: tamaño real reservado]` |
+| Ventana | 256 MB reservados (65536 páginas), configurables |
 | Protección inicial | `PROT_NONE` |
 | Señal | `SIGSEGV` con `SA_SIGINFO` y `SA_ONSTACK` |
-| Pila alternativa | `[PENDIENTE: sigaltstack configurado sí/no]` |
+| Pila alternativa | Sí, una por hilo registrado, reservada en `dsm_fault_attach_thread` |
 
 **Decisión clave.** El handler no puede llamar a funciones no seguras para señales. Solo calcula el `page_id`, encola el fallo y retorna. Toda la lógica (red, copia, `mprotect`) ocurre en el hilo resolutor.
 
+**Copia sin carreras.** La ventana se crea sobre un `memfd` mapeado dos veces: una vista en `PROT_NONE` para los hilos de usuario y otra en `RW` para el resolutor. Así los datos se copian sin conceder permisos y solo se publican cuando están completos.
+
 ```c
-/* [PENDIENTE: pegar el handler real una vez implementado] */
+static void dsm_segv_handler(int sig, siginfo_t *si, void *uctx)
+{
+    dsm_thread_ctx_t *ctx = t_ctx;
+    dsm_fault_req_t   req;
+
+    /* Un fallo que el DSM no puede resolver se relanza con el manejador
+     * anterior: no debe quedar oculto. */
+    if (!g_q.installed || ctx == NULL || si->si_code != SEGV_ACCERR) {
+        reraise(sig);
+        return;
+    }
+
+    uint64_t page_id = map_addr_to_page(si->si_addr);
+    if (page_id == DSM_INVALID_PAGE_ID) {
+        reraise(sig);
+        return;
+    }
+
+    /* Bloquear la señal de reanudación antes de publicar in_fault evita
+     * perder el aviso del resolutor. */
+    sigset_t block, oldmask, waitmask;
+    sigemptyset(&block);
+    sigaddset(&block, SIGSEGV);
+    sigaddset(&block, DSM_SIG_RESUME);
+    sigprocmask(SIG_BLOCK, &block, &oldmask);
+
+    ctx->pending_page = page_id;
+    ctx->fault_kind   = (int)decode_kind(uctx);
+    atomic_store_explicit(&ctx->in_fault, 1, memory_order_seq_cst);
+
+    req.page_id    = page_id;
+    req.kind       = (dsm_fault_kind_t)ctx->fault_kind;
+    req.fault_addr = si->si_addr;
+    req.ctx        = ctx;
+
+    if (!queue_push(&req)) {                 /* anillo lleno o apagado */
+        atomic_store_explicit(&ctx->in_fault, 0, memory_order_seq_cst);
+        sigprocmask(SIG_SETMASK, &oldmask, NULL);
+        reraise(sig);
+        return;
+    }
+
+    /* Dormir hasta que el resolutor confirme. sigsuspend no toma locks y es
+     * segura dentro de un manejador. */
+    waitmask = oldmask;
+    sigaddset(&waitmask, SIGSEGV);
+    sigdelset(&waitmask, DSM_SIG_RESUME);
+    while (atomic_load_explicit(&ctx->in_fault, memory_order_seq_cst) != 0) {
+        sigsuspend(&waitmask);
+    }
+    sigprocmask(SIG_SETMASK, &oldmask, NULL);
+
+    if (atomic_load_explicit(&ctx->failed, memory_order_seq_cst) != 0) {
+        reraise(sig);
+    }
+}
 ```
 
 **Riesgos atendidos.** `si_addr` no alineado, fallos concurrentes sobre la misma página, reintento de la instrucción tras `mprotect`.
@@ -343,14 +412,14 @@ sequenceDiagram
 | Aspecto | Detalle |
 |---|---|
 | Archivos | `src/net.c`, `src/protocol.c`, `include/dsm_net.h`, `include/dsm_protocol.h` |
-| Modelo | `[PENDIENTE: un hilo por conexión / epoll / selector]` |
+| Modelo | Pendiente de definir en el módulo de red |
 | Cabecera | 64 B, `magic = 0x44534D31` |
 | Endianness | `htonl` / `ntohl` en todos los campos |
 | Lectura | `read_full()` para cabecera y payload |
-| Mensajes implementados | `[PENDIENTE: lista real]` |
+| Mensajes implementados | Pendiente: el catálogo de códigos ya está fijado en `dsm_msg_type_t` |
 
 ```c
-/* [PENDIENTE: pegar la estructura real de la cabecera y la función de envío] */
+/* Pendiente: pegar la cabecera real y la función de envío cuando exista net.c. */
 ```
 
 ### 7.3 Módulo de concurrencia
@@ -361,11 +430,13 @@ sequenceDiagram
 |---|---|
 | Archivos | `src/sync.c`, `src/runtime.c`, `include/dsm_sync.h`, `include/dsm_runtime.h` |
 | Primitivas | Pthreads, mutex, variables de condición, semáforos POSIX |
-| Hilos del runtime | `[PENDIENTE: escucha, resolutor, heartbeat, ...]` |
-| Orden de locks | `[PENDIENTE: documentar la jerarquía real]` |
+| Hilos del runtime | Uno de escucha, uno resolutor y uno de heartbeat; los hilos de usuario los crea la aplicación |
+| Orden de locks | `GLOBAL → OBJECT → PAGE → FRAME`, verificado en ejecución |
 | Regla | Nunca se espera red con un lock de página tomado |
 
-> `[PENDIENTE: describir el mecanismo de coalescencia de fallos sobre una misma página.]`
+**Coalescencia de fallos.** Si dos hilos fallan en la misma página, el resolutor marca la entrada como `TRAYENDO` y el segundo hilo espera en la variable de condición de la página en lugar de lanzar un segundo `PAGE_REQUEST`. Cuando la resolución termina, un `broadcast` despierta a todos y cada uno reevalúa su estado: si el fallo era de escritura y la página quedó en `S`, pide la propiedad.
+
+**Por qué el orden se verifica.** Cada lock declara su clase al inicializarse. Si un hilo toma una clase menor que la que ya tiene, se registra una violación y se avisa por `stderr`, sin abortar. Así un error de orden aparece en la primera ejecución en lugar de manifestarse como interbloqueo intermitente.
 
 ### 7.4 MSI implementado
 
@@ -390,19 +461,21 @@ stateDiagram-v2
 
 **Figura 4.** Diagrama de estados MSI implementado.
 
-> `[PENDIENTE: marcar qué transiciones están realmente implementadas y cuáles no.]`
+Todas las transiciones del diagrama están implementadas en `dsm_msi_next_state()`. Con dos nodos, `S → M` no necesita invalidar a terceros: el home comprueba el bitmap del directorio y, si no hay otro *sharer*, concede la propiedad con `OWNERSHIP_GRANT`. La rama de invalidación múltiple se rechaza explícitamente con `OWNERSHIP_DENY` y queda para el E3.
+
+**Función pura.** `dsm_msi_next_state(estado, evento)` devuelve el estado siguiente sin tocar memoria ni red, así que la tabla se puede probar con casos unitarios sin levantar dos nodos.
 
 ### 7.5 API disponible
 
 | Función | Estado | Observaciones |
 |---|---|---|
-| `dsm_init` | `[PENDIENTE]` | `[PENDIENTE]` |
-| `dsm_shutdown` | `[PENDIENTE]` | `[PENDIENTE]` |
-| `dsm_create` | `[PENDIENTE]` | `[PENDIENTE]` |
-| `dsm_attach` | `[PENDIENTE]` | `[PENDIENTE]` |
-| `dsm_detach` | `[PENDIENTE]` | `[PENDIENTE]` |
-| `dsm_node_id` | `[PENDIENTE]` | `[PENDIENTE]` |
-| `dsm_stats` | `[PENDIENTE]` | `[PENDIENTE]` |
+| `dsm_init` | Pendiente | Va en `dsm_api.c`; orquesta `dsm_memory_init`, `dsm_fault_install` y `dsm_coherence_init` |
+| `dsm_shutdown` | Pendiente | Debe llamar a `dsm_fault_shutdown()` para que el resolutor salga del bucle |
+| `dsm_create` | Pendiente | Reserva el objeto y define el rango de `page_id` |
+| `dsm_attach` | Pendiente | Registra el hilo con `dsm_fault_attach_thread()` antes de tocar la ventana |
+| `dsm_detach` | Pendiente | Llama a `dsm_fault_detach_thread()` |
+| `dsm_node_id` | Pendiente | Devuelve el `node_id` del runtime |
+| `dsm_stats` | Parcial | `dsm_stats_format()` ya produce el resumen; falta exponerlo por el API |
 
 ### 7.6 Configuración
 
@@ -437,7 +510,7 @@ heartbeat_timeout_ms  = 5000
 network_timeout_ms    = 3000
 ```
 
-> `[PENDIENTE: reemplazar por el archivo real y documentar las claves efectivamente leídas.]`
+> **Nota.** El archivo `config/dsm.conf` lo produce el módulo de configuración, que todavía no existe. Las claves del ejemplo son las del E1 y sus valores coinciden con los predeterminados del código ya escrito: página de 4096 B, ventana de 256 MB, 256 marcos y espera de red de 3000 ms.
 
 ### 7.7 Estructura del código fuente
 
@@ -515,6 +588,10 @@ ProyectoSO/
 
 > **Nota.** Esta estructura es la definitiva para el prototipo 1. Si durante la implementación cambia, la sección 6.2 lo registra como un cambio respecto al E1.
 
+**Ubicación durante el desarrollo.** Mientras el prototipo está en construcción, el código vive en `Entregable_2/prototipo1/` con esta misma distribución (`include/`, `src/`, `Makefile`). Al cerrar el entregable se traslada a la raíz del repositorio. La razón es simple: así el entregable queda autocontenido y no se mezcla con la documentación de los otros entregables.
+
+**Estado actual del código.** Implementados los módulos de memoria, señales, coherencia MSI, sincronización y contadores (sección 7.1, 7.3 y 7.4). Pendientes los de configuración, red, protocolo y CLI (sección 7.2 y 7.6), que corresponden al otro integrante. El `Makefile` de esa carpeta compila los módulos terminados con `make check`; todavía no enlaza binarios.
+
 ### 7.8 Convenciones de código
 
 | Aspecto | Convención |
@@ -573,33 +650,48 @@ Todo entregable que incluya código debe venir acompañado de un documento Markd
 
 | Estructura | Tamaño esperado (E1) | Tamaño real | Diferencia | Motivo |
 |---|---:|---:|---|---|
-| `dsm_msg_header_t` | 64 B | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
-| `dsm_config_t` | 704 B | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
-| `dsm_page_req_payload_t` | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
-| `dsm_page_data_payload_t` | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
-| `dsm_hello_payload_t` | 128 B | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
-| `dsm_stats_t` | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
+| `dsm_local_page_t` | 56 B | 56 B | Ninguna | Metadatos; la sincronización va aparte |
+| `dsm_frame_t` | 40 B | 40 B | Ninguna | Marco de contabilidad |
+| `dsm_directory_entry_t` | 64 B | 64 B | Ninguna | Entrada del directorio del home |
+| `dsm_stats_t` | 128 B | 128 B | Ninguna | 16 contadores de 64 bits |
+| `dsm_thread_ctx_t` | 5 campos | 6 campos | +4 B | Se agregó `failed` atómico |
+| `dsm_msg_header_t` | 64 B | No implementada | — | Corresponde al módulo de red |
+| `dsm_config_t` | 704 B | No implementada | — | Corresponde al módulo de configuración |
+| `dsm_page_req_payload_t` | — | No implementada | — | Corresponde al módulo de red |
+| `dsm_page_data_payload_t` | — | No implementada | — | Corresponde al módulo de red |
+| `dsm_hello_payload_t` | 128 B | No implementada | — | Corresponde al módulo de red |
 
 **Tabla 4.** Estructuras implementadas y tamaños.
+
+Los cuatro tamaños de la primera mitad están verificados con `_Static_assert` en las cabeceras; el compilador los comprueba en cada compilación, no en tiempo de ejecución.
 
 ### 8.2 Verificación de tamaños
 
 Los tamaños se verifican en tiempo de compilación con `_Static_assert`, de modo que una discrepancia rompa el build en lugar de corromper el protocolo:
 
 ```c
+/* Ya presentes en el código */
+_Static_assert(sizeof(dsm_local_page_t) == 56,      "dsm_local_page_t debe medir 56 bytes");
+_Static_assert(sizeof(dsm_frame_t) == 40,           "dsm_frame_t debe medir 40 bytes");
+_Static_assert(sizeof(dsm_directory_entry_t) == 64, "dsm_directory_entry_t debe medir 64 bytes");
+_Static_assert(sizeof(dsm_stats_t) == 128,          "dsm_stats_t debe medir 128 bytes");
+
+/* Contrato para el módulo de red, todavía sin implementar */
 _Static_assert(sizeof(dsm_msg_header_t) == 64, "header must be 64 bytes");
-_Static_assert(sizeof(dsm_config_t) == 704, "config must be 704 bytes");
+_Static_assert(sizeof(dsm_config_t) == 704,    "config must be 704 bytes");
 ```
 
-> `[PENDIENTE: pegar la salida real de compilación y la tabla de offsets.]`
+> **Pendiente de verificación.** Los cuatro primeros se comprueban al compilar en el laboratorio; hasta entonces solo se validó la sintaxis. Los dos últimos pertenecen a módulos que aún no existen.
 
 ### 8.3 Diferencias con el diseño
 
-> `[PENDIENTE: enumerar cada estructura que se apartó del E1, con el motivo.]`
-
 | Estructura | Cambio | Motivo |
 |---|---|---|
-| `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
+| `dsm_local_page_t` | Conserva 56 B, pero el mutex y la condición no viven dentro | Un `pthread_mutex_t` mide 40 B y habría roto el tamaño documentado; se movieron a `dsm_page_entry_t` |
+| `dsm_thread_ctx_t` | Se agregó `_Atomic int failed` | Sin esa bandera, un fallo irresoluble reintentaría el `SIGSEGV` para siempre |
+| `dsm_memory_t` | Añade `backing_base` y `backing_fd` | Sostienen el doble mapeo del `memfd`; sin ellos no se puede copiar sin abrir permisos |
+| `dsm_coherence_t` | Añade `ops` (callbacks de red) | Desacopla la coherencia del transporte y permite probarla con callbacks falsos |
+| `dsm_page_entry_t` | Nueva: metadatos + lock + condición + cadena del hash | El E1 no detallaba dónde vivía la sincronización por página |
 
 ---
 
@@ -626,7 +718,7 @@ make run        # arranca dos nodos locales
 make clean      # limpia objetos y binarios
 ```
 
-> `[PENDIENTE: pegar la salida real de make.]`
+> **Estado.** El `Makefile` definitivo se integra cuando existan todos los módulos. Mientras tanto, `Entregable_2/prototipo1/Makefile` compila los cinco módulos ya escritos con `make check`, sin enlazar. La salida real de `make` se pega aquí después de la primera compilación en el laboratorio.
 
 ### 9.3 Configuración y puertos
 
@@ -662,7 +754,7 @@ Fórmula: `puerto_base = 27300 + 4 × node_id`.
 ./scripts/demo.sh 2>&1 | tee evidence/demo.log
 ```
 
-> `[PENDIENTE: describir el guion real de la demostración.]`
+> **Guion de la demostración.** El `scripts/demo.sh` lo escribe el integrante responsable de la red. La secuencia prevista es: arrancar el nodo 0, arrancar el nodo 1, ejecutar la aplicación de prueba que lee la página 0 desde el nodo 1, escribir desde el nodo 0 para provocar la invalidación y consultar el estado con `dsmctl`. El guion definitivo se documenta cuando el script exista.
 
 ---
 
@@ -674,20 +766,20 @@ Todas las pruebas se ejecutan sobre un objeto DSM de **4 páginas (16 KB)**. La 
 
 | # | Prueba | Objetivo | Cómo se verifica | Estado |
 |---:|---|---|---|---|
-| 1 | Compilación | El proyecto compila sin errores | `make` termina con código 0 | `[PENDIENTE]` |
-| 2 | Arranque de dos nodos | Ambos procesos inician | Dos `dsm_node` activos | `[PENDIENTE]` |
-| 3 | Apertura de puertos | Cada nodo escucha | `ss -ltnp` muestra 27300 y 27304 | `[PENDIENTE]` |
-| 4 | Registro con la semilla | El nodo 1 se une | Log `JOIN_RESPONSE` | `[PENDIENTE]` |
-| 5 | Heartbeat | Se detectan nodos vivos | Log de latidos cada 1 s | `[PENDIENTE]` |
-| 6 | Reserva de ventana | `mmap` exitoso | Log con dirección y tamaño | `[PENDIENTE]` |
-| 7 | Protección inicial | Páginas en `PROT_NONE` | Lectura provoca `SIGSEGV` | `[PENDIENTE]` |
-| 8 | Captura de `si_addr` | El handler identifica la página | Log del `page_id` calculado | `[PENDIENTE]` |
-| 9 | `PAGE_REQUEST` | Se solicita la página remota | Log del mensaje enviado | `[PENDIENTE]` |
-| 10 | `PAGE_DATA` | Se recibe el contenido | Log del mensaje recibido | `[PENDIENTE]` |
-| 11 | Reanudación del hilo | La lectura continúa | El programa imprime el valor correcto | `[PENDIENTE]` |
-| 12 | Transición `I → S` | Se obtiene copia compartida | Estado de página = `S` | `[PENDIENTE]` |
-| 13 | Invalidación `S → I` | La escritura remota invalida | Log `INVALIDATE` / `INVALIDATE_ACK` | `[PENDIENTE]` |
-| 14 | CLI de estado | Se consulta el nodo | Salida de `dsmctl status` | `[PENDIENTE]` |
+| 1 | Compilación | El proyecto compila sin errores | `make` termina con código 0 | Por ejecutar |
+| 2 | Arranque de dos nodos | Ambos procesos inician | Dos `dsm_node` activos | Por ejecutar |
+| 3 | Apertura de puertos | Cada nodo escucha | `ss -ltnp` muestra 27300 y 27304 | Por ejecutar |
+| 4 | Registro con la semilla | El nodo 1 se une | Log `JOIN_RESPONSE` | Por ejecutar |
+| 5 | Heartbeat | Se detectan nodos vivos | Log de latidos cada 1 s | Por ejecutar |
+| 6 | Reserva de ventana | `mmap` exitoso | Log con dirección y tamaño | Por ejecutar |
+| 7 | Protección inicial | Páginas en `PROT_NONE` | Lectura provoca `SIGSEGV` | Por ejecutar |
+| 8 | Captura de `si_addr` | El handler identifica la página | Log del `page_id` calculado | Por ejecutar |
+| 9 | `PAGE_REQUEST` | Se solicita la página remota | Log del mensaje enviado | Por ejecutar |
+| 10 | `PAGE_DATA` | Se recibe el contenido | Log del mensaje recibido | Por ejecutar |
+| 11 | Reanudación del hilo | La lectura continúa | El programa imprime el valor correcto | Por ejecutar |
+| 12 | Transición `I → S` | Se obtiene copia compartida | Estado de página = `S` | Por ejecutar |
+| 13 | Invalidación `S → I` | La escritura remota invalida | Log `INVALIDATE` / `INVALIDATE_ACK` | Por ejecutar |
+| 14 | CLI de estado | Se consulta el nodo | Salida de `dsmctl status` | Por ejecutar |
 
 **Tabla 6.** Escenarios de prueba.
 
@@ -695,20 +787,20 @@ Todas las pruebas se ejecutan sobre un objeto DSM de **4 páginas (16 KB)**. La 
 
 | # | Resultado esperado | Resultado obtenido | ¿Cumple? | Evidencia |
 |---:|---|---|---|---|
-| 1 | `make` sin errores | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/01_make.log` |
-| 2 | Dos nodos activos | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/02_nodo0.log` |
-| 3 | Puertos abiertos | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/03_puertos.txt` |
-| 4 | Unión al clúster | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/04_join.log` |
-| 5 | Latidos periódicos | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/05_heartbeat.log` |
-| 6 | Ventana reservada | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/06_mmap.log` |
-| 7 | `SIGSEGV` capturado | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/07_fault.log` |
-| 8 | `si_addr` correcto | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/08_siaddr.log` |
-| 9 | `PAGE_REQUEST` enviado | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/09_request.log` |
-| 10 | `PAGE_DATA` recibido | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/10_data.log` |
-| 11 | Lectura correcta | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/11_lectura.log` |
-| 12 | Página en `S` | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/12_msi.log` |
-| 13 | Invalidación correcta | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/13_invalidate.log` |
-| 14 | CLI responde | `[PENDIENTE]` | `[PENDIENTE]` | `evidence/14_cli.txt` |
+| 1 | `make` sin errores | Pendiente | — | `evidence/01_make.log` |
+| 2 | Dos nodos activos | Pendiente | — | `evidence/02_nodo0.log` |
+| 3 | Puertos abiertos | Pendiente | — | `evidence/03_puertos.txt` |
+| 4 | Unión al clúster | Pendiente | — | `evidence/04_join.log` |
+| 5 | Latidos periódicos | Pendiente | — | `evidence/05_heartbeat.log` |
+| 6 | Ventana reservada | Pendiente | — | `evidence/06_mmap.log` |
+| 7 | `SIGSEGV` capturado | Pendiente | — | `evidence/07_fault.log` |
+| 8 | `si_addr` correcto | Pendiente | — | `evidence/08_siaddr.log` |
+| 9 | `PAGE_REQUEST` enviado | Pendiente | — | `evidence/09_request.log` |
+| 10 | `PAGE_DATA` recibido | Pendiente | — | `evidence/10_data.log` |
+| 11 | Lectura correcta | Pendiente | — | `evidence/11_lectura.log` |
+| 12 | Página en `S` | Pendiente | — | `evidence/12_msi.log` |
+| 13 | Invalidación correcta | Pendiente | — | `evidence/13_invalidate.log` |
+| 14 | CLI responde | Pendiente | — | `evidence/14_cli.txt` |
 
 **Tabla 7.** Resultados obtenidos.
 
@@ -716,25 +808,29 @@ Todas las pruebas se ejecutan sobre un objeto DSM de **4 páginas (16 KB)**. La 
 
 | Evidencia | Archivo | Estado |
 |---|---|---|
-| Salida de `make` | `evidence/01_make.log` | `[PENDIENTE]` |
-| Arranque del nodo 0 | `evidence/02_nodo0.log` | `[PENDIENTE]` |
-| Arranque del nodo 1 | `evidence/03_nodo1.log` | `[PENDIENTE]` |
-| Puertos en escucha | `evidence/04_puertos.txt` | `[PENDIENTE]` |
-| Logs de heartbeat | `evidence/05_heartbeat.log` | `[PENDIENTE]` |
-| `PAGE_REQUEST` / `PAGE_DATA` | `evidence/06_paginas.log` | `[PENDIENTE]` |
-| Salida de la CLI | `evidence/07_cli.txt` | `[PENDIENTE]` |
-| Captura de la terminal | `evidence/08_captura.png` | `[PENDIENTE]` |
-| `git log` con ambos autores | `evidence/09_gitlog.txt` | `[PENDIENTE]` |
+| Salida de `make` | `evidence/01_make.log` | Pendiente |
+| Arranque del nodo 0 | `evidence/02_nodo0.log` | Pendiente |
+| Arranque del nodo 1 | `evidence/03_nodo1.log` | Pendiente |
+| Puertos en escucha | `evidence/04_puertos.txt` | Pendiente |
+| Logs de heartbeat | `evidence/05_heartbeat.log` | Pendiente |
+| `PAGE_REQUEST` / `PAGE_DATA` | `evidence/06_paginas.log` | Pendiente |
+| Salida de la CLI | `evidence/07_cli.txt` | Pendiente |
+| Captura de la terminal | `evidence/08_captura.png` | Pendiente |
+| `git log` con ambos autores | `evidence/09_gitlog.txt` | Pendiente |
 
-> `[PENDIENTE: insertar las capturas y pegar los fragmentos de log más relevantes.]`
+> **Pendiente.** Las capturas y los fragmentos de log se insertan después de la ejecución en el laboratorio. La carpeta `evidence/` no se versiona salvo los archivos `.log`, que sí quedan en el repositorio como prueba.
 
 ### 10.4 Problemas encontrados
 
-> `[PENDIENTE: una entrada por problema, con síntoma, causa, solución y aprendizaje.]`
+Estos problemas se detectaron en la revisión del código, antes de la primera compilación. Se documentan porque explican por qué el diseño actual difiere del E1.
 
 | # | Problema | Síntoma | Causa | Solución |
 |---:|---|---|---|---|
-| 1 | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
+| 1 | Copia de página con permisos abiertos | Otro hilo podía leer una página a medio copiar | Para escribir había que poner la ventana en `RW`, y eso la hacía visible antes de tiempo | Doble mapeo del `memfd`: la ventana nunca sale de `PROT_NONE` durante la copia |
+| 2 | `pthread_sigmask` dentro del manejador | Llamada no segura para señales | Se usó la variante de Pthreads por inercia | `sigprocmask`, que sí está en la lista de funciones seguras |
+| 3 | Una sola pila alternativa para todo el proceso | Dos fallos simultáneos comparten pila y corrompen el proceso | `sigaltstack` es un atributo por hilo, no por proceso | Cada hilo registrado reserva su pila y la libera con un destructor de `pthread_key` |
+| 4 | Comprobación de orden de locks desactivada | Diagnósticos falsos: la pila quedaba desbalanceada | `check_order()` retornaba antes de apilar la clase | La pila se actualiza siempre; solo la comprobación es condicional |
+| 5 | `OWNERSHIP_DENY` enviado como `DSM_MSG_ERROR` | El cliente no distinguía una negación de protocolo de un error de transporte | Se reutilizó el ayudante de errores | Se separó `send_status()` y se agregó `send_deny()` con el tipo correcto |
 
 ---
 
@@ -747,11 +843,13 @@ Todas las pruebas se ejecutan sobre un objeto DSM de **4 páginas (16 KB)**. La 
 | 3 | Sin aplicaciones de prueba | No hay carga real | Se implementan en E3 |
 | 4 | Sin métricas de rendimiento | No hay *speedup* | Se miden en E3 |
 | 5 | Sin tolerancia a fallos de nodo | Un nodo caído bloquea páginas | Fuera del alcance base |
-| 6 | `[PENDIENTE]` | `[PENDIENTE]` | `[PENDIENTE]` |
+| 6 | Sin invalidación de terceros | El home niega la propiedad si hay otro *sharer* | Con dos nodos no ocurre; se implementa en E3 |
+| 7 | Sin expulsión ni reutilización de marcos | Al agotar los 256 marcos, la página no se puede materializar | Se implementa en E3 con LRU aproximada |
+| 8 | Compilación no verificada al cierre de esta versión | El código está escrito y revisado, pero no compilado | Se compila en el laboratorio antes de la entrega |
 
 **Tabla 8.** Limitaciones conocidas.
 
-> `[PENDIENTE: agregar las limitaciones reales que aparezcan durante la implementación.]`
+> **Nota.** Las limitaciones 1 a 7 son de alcance y están asumidas desde el diseño. La 8 es temporal: desaparece en cuanto se ejecute `make check` en Linux.
 
 ---
 
@@ -776,15 +874,17 @@ Todas las pruebas se ejecutan sobre un objeto DSM de **4 páginas (16 KB)**. La 
 
 ## 13. Conclusiones
 
-> `[PENDIENTE: redactar al final, con base en los resultados reales.]`
+> **Versión preliminar.** Estas conclusiones cubren el diseño y el código revisado. Los resultados experimentales se agregan después de ejecutar el prototipo en el laboratorio; hasta entonces no se afirma ningún comportamiento observado.
 
-Puntos que debe cubrir:
+**Sobre la viabilidad del mecanismo.** La combinación de `mmap(PROT_NONE)`, un manejador de `SIGSEGV` con `SA_SIGINFO` y `mprotect` permite materializar páginas bajo demanda sin que la aplicación cambie una línea. El costo está en que el manejador debe ser mínimo: cualquier operación que no sea segura para señales convierte un fallo de página en un interbloqueo.
 
-1. Qué se logró demostrar y con qué evidencia.
-2. Qué se aprendió sobre `mmap`, `mprotect`, `SIGSEGV` y la coordinación con red.
-3. Qué desviaciones respecto al E1 resultaron necesarias y por qué.
-4. Qué riesgos se materializaron y cómo se resolvieron.
-5. Qué queda para el Prototipo 2.
+**Sobre `mmap`, `mprotect` y señales.** Tres lecciones concretas. Primera: no se puede escribir sobre una página en `PROT_NONE`, y abrirla antes de copiar expone datos a medias; la solución fue mapear la misma memoria dos veces. Segunda: `sigaltstack` es por hilo, no por proceso, así que cada hilo que toca la ventana necesita la suya. Tercera: `sem_wait` no es segura dentro de un manejador; el hilo debe dormirse con `sigsuspend` y el resolutor despertarlo con `pthread_kill`.
+
+**Sobre las desviaciones.** El E1 describía el *qué*; la implementación obligó a decidir el *cómo*. El doble mapeo, la cola de fallos sin locks y el directorio local en el nodo home no contradicen el diseño: lo hacen ejecutable con dos nodos y cuatro páginas. Cada una quedó registrada en las secciones 5.4 y 6.2 con su motivo.
+
+**Sobre los riesgos.** El riesgo dominante no era la red sino la concurrencia: interbloqueo por señal y carrera en la copia. Ambos se atacaron en el diseño, no con parches posteriores, y la jerarquía de locks se verifica en ejecución para que un error de orden aparezca en la primera prueba.
+
+**Qué queda.** El Prototipo 2 debe añadir expulsión con LRU, varios objetos, aplicaciones de carga y métricas. La base actual está preparada: los marcos y la residencia ya distinguen `TRAYENDO`, `RESIDENTE` y `EXPULSANDO`, aunque la expulsión todavía no se ejecute.
 
 ---
 
@@ -793,11 +893,11 @@ Puntos que debe cubrir:
 1. Tanenbaum, A. S., & van Steen, M. (2017). *Distributed Systems: Principles and Paradigms* (3rd ed.). Maarten van Steen.
 2. Silberschatz, A., Galvin, P. B., & Gagne, G. (2018). *Operating System Concepts* (10th ed.). Wiley.
 3. IEEE. (2018). *IEEE Std 1003.1-2017: Standard for Information Technology — Portable Operating System Interface (POSIX)*.
-4. Linux man-pages project. `mmap(2)`, `mprotect(2)`, `sigaction(2)`, `signal(7)`, `pthreads(7)`, `sem_overview(7)`, `tcp(7)`.
+4. Linux man-pages project. `mmap(2)`, `mprotect(2)`, `sigaction(2)`, `sigaltstack(2)`, `sigsuspend(2)`, `memfd_create(2)`, `signal(7)`, `pthreads(7)`, `sem_overview(7)`, `shm_overview(7)`, `tcp(7)`.
 5. Stevens, W. R., Fenner, B., & Rudoff, A. M. (2003). *UNIX Network Programming, Volume 1* (3rd ed.). Addison-Wesley.
 6. Instituto Tecnológico de Costa Rica. (2026). *Proyecto SO — Sistema de Memoria Compartida Distribuida (DSM)* [Enunciado del curso IC-6600].
 
-> `[PENDIENTE: agregar las referencias que se consulten durante la implementación.]`
+> **Nota.** Esta lista cubre las fuentes consultadas para el diseño y la implementación de los módulos actuales. Si durante la integración se consulta material adicional, se agrega aquí.
 
 ---
 
@@ -805,38 +905,38 @@ Puntos que debe cubrir:
 
 ### Anexo A — Logs de ejecución
 
-> `[PENDIENTE: pegar los logs completos o los fragmentos representativos.]`
+> **Pendiente.** Se pegan aquí los fragmentos representativos de `evidence/`: arranque de los dos nodos, `PAGE_REQUEST` / `PAGE_DATA`, `INVALIDATE` / `INVALIDATE_ACK` y la salida de `dsmctl status`. Se transcriben tal como salgan, sin editarlos.
 
 ```text
-[PENDIENTE]
+Pendiente de la ejecución en el laboratorio.
 ```
 
 ### Anexo B — Capturas
 
-> `[PENDIENTE: insertar las capturas de terminal y del panel de estado.]`
+> **Pendiente.** Capturas de la terminal con los dos nodos activos y, si existe, del panel de estado. Se numeran a partir de la figura 5.
 
 ### Anexo C — Tablas de resultados
 
-> `[PENDIENTE: incluir las tablas de tiempos y estados si se midieron.]`
+> **Pendiente.** Tabla de tiempos por operación (fallo de página local, fallo remoto, invalidación) medida con `dsm_stats` y `dsm_now_ms()`. Solo se incluye si la medición se ejecutó.
 
 ### Anexo D — Checklist de entrega
 
-- [ ] Documento Markdown del prototipo 1.
-- [ ] Arquitectura actualizada.
-- [ ] Cambios respecto al E1.
-- [ ] Código fuente.
-- [ ] Guía de código (`02_Entregable_2_Guia_Codigo.md`).
-- [ ] `Makefile`.
-- [ ] `README`.
-- [ ] Configuración de ejemplo.
+- [x] Documento Markdown del prototipo 1.
+- [x] Arquitectura actualizada.
+- [x] Cambios respecto al E1.
+- [ ] Código fuente — parcial: módulos de memoria, señales, coherencia, sincronización y contadores.
+- [x] Guía de código (`02_Entregable_2_Guia_Codigo.md`).
+- [x] `Makefile` provisional (`make check`).
+- [x] `README`.
+- [x] Configuración de ejemplo.
 - [ ] Compilación exitosa.
 - [ ] Arranque de 2 nodos.
 - [ ] Transferencia de página.
-- [ ] MSI básico.
+- [ ] MSI básico — código escrito, sin ejecutar.
 - [ ] Evidencia de ejecución.
-- [ ] Limitaciones.
-- [ ] Trabajo pendiente.
-- [ ] Repositorio Git.
+- [x] Limitaciones.
+- [x] Trabajo pendiente.
+- [x] Repositorio Git.
 - [ ] Commits de ambos integrantes.
 
 > Este anexo es de control interno: **se elimina antes de la entrega**.
@@ -845,22 +945,22 @@ Puntos que debe cubrir:
 
 ## Apéndice — Guía rápida de llenado
 
-| Sección | Qué falta | Cuándo se completa |
+| Sección | Estado | Qué falta |
 |---|---|---|
-| 4.3 | Estado real de cada elemento del E1 | Al cerrar la implementación |
-| 5.4 | Tabla de desviaciones | Durante el desarrollo |
-| 5.5 | Decisiones tomadas | Durante el desarrollo |
-| 6.2 | Cambios C-03 en adelante | Al cerrar la implementación |
-| 6.4 | Impacto real en API y estructuras | Al cerrar la implementación |
-| 7.1–7.6 | Código, funciones y archivos reales | Al implementar cada módulo |
-| 7.7 | Verificar que el árbol coincida con los archivos reales | Al crear los archivos |
-| 7.9 | Guía de código complementaria | Al cerrar la implementación |
-| 8 | Tamaños reales y diferencias | Al compilar |
-| 9 | Comandos y salidas reales | Al ejecutar |
-| 10 | Resultados y evidencia | Al probar |
-| 11 | Limitaciones reales | Al probar |
-| 12 | Pendientes confirmados | Al cerrar |
-| 13 | Conclusiones | Al final |
-| 15 | Logs y capturas | Al final |
+| 4.3 | Completa | — |
+| 5.4 | Parcial | Filas de red y configuración |
+| 5.5 | Completa para los módulos actuales | Decisiones de red y configuración |
+| 6.2 | Parcial | Cambios de red y configuración |
+| 6.4 | Parcial | API y protocolo |
+| 7.1–7.6 | Parcial | 7.2 (red) y 7.5 (API pública) |
+| 7.7 | Completa | — |
+| 7.9 | Completa | — |
+| 8 | Completa para los módulos actuales | Estructuras de red y configuración |
+| 9 | Pendiente de ejecución | Salidas reales de `make` y de los nodos |
+| 10 | Pendiente de ejecución | Resultados y evidencia |
+| 11 | Completa | — |
+| 12 | Completa | — |
+| 13 | Preliminar | Agregar resultados experimentales |
+| 15 | Pendiente de ejecución | Logs y capturas |
 
 > Borrar este apéndice antes de la entrega.
