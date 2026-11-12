@@ -734,7 +734,7 @@ make dsmctl     # solo la CLI
 make clean      # limpia objetos y binarios
 ```
 
-La compilación se ejecutó con **GCC 13.2.1** sobre Linux (Alpine 3.20.3, musl 1.2.5, kernel 6.18 en WSL2), con `-std=c11 -Wall -Wextra -Wpedantic`. El resultado fue **0 errores y 0 advertencias**. Además, los 14 archivos se compilaron por separado con **clang 22.1.8 (Zig 0.17.1)** apuntando a `x86_64-linux-gnu` (glibc), también sin advertencias, y ambos binarios enlazaron; eso cubre el caso de que el laboratorio use glibc en vez de musl.
+**Entorno de desarrollo (WSL2).** La compilación se ejecutó con **GCC 13.2.1** sobre Linux (Alpine 3.20.3, musl 1.2.5, kernel 6.18 en WSL2), con `-std=c11 -Wall -Wextra -Wpedantic`. El resultado fue **0 errores y 0 advertencias**. Además, los 14 archivos se compilaron por separado con **clang 22.1.8 (Zig 0.17.1)** apuntando a `x86_64-linux-gnu` (glibc), también sin advertencias, y ambos binarios enlazaron; eso cubre el caso de que el laboratorio use glibc en vez de musl.
 
 ```text
 cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/sync.c -o build/sync.o
@@ -744,7 +744,9 @@ cc ... -o dsm_node build/*.o -lpthread
 cc ... -o dsmctl   build/*.o -lpthread
 ```
 
-> **Evidencia.** La salida completa de `make` está en `Entregable_2/prototipo1/evidence/01_make.log`. No se transcribe entera aquí para no repetir 17 líneas de comandos.
+**Entorno del laboratorio (Ubuntu).** El proyecto se copió a las dos máquinas del laboratorio y se compiló con **GCC 13.3.0** sobre **Ubuntu 24.04 (kernel 6.8.0-138-generic)**. El resultado fue **0 errores y 0 advertencias** tras aplicar precisión literal en `config.c` (líneas 27, 33, 50: `%.63s`, `%.255s`, `%.255s`) para satisfacer `-Wformat-truncation` en GCC 13.3.0. Ambos binarios (`dsm_node` y `dsmctl`) enlazaron correctamente.
+
+> **Evidencia.** La salida completa de `make` en WSL2 está en `Entregable_2/prototipo1/evidence/01_make.log`. La compilación en el laboratorio se registró en `evidence/lab_build.log` (no versionada, se adjunta en la entrega).
 
 ### 9.3 Configuración y puertos
 
@@ -782,6 +784,8 @@ En el prototipo 1 solo se usan `listen_port` y `seed_port`; los otros tres está
 El identificador del nodo **no** se pasa por línea de comandos: viene del archivo de configuración (`node_id`). Un `--id` en la línea de comandos no existe y no se documenta como si existiera.
 
 > `dsmctl` todavía es un stub que imprime `dsmctl: not fully implemented`. No se usa en la demostración y no se presenta como funcional.
+
+**Configuración de laboratorio.** En las máquinas del laboratorio se usaron los mismos archivos con `bind_address = 0.0.0.0` en ambos nodos, y en el nodo 1 se agregó `seed_host = 192.0.2.10` (la IP del nodo 0). Los puertos del nodo 1 son `27304–27307`.
 
 ### 9.5 Ejecución de pruebas
 
@@ -858,13 +862,16 @@ Las pruebas que el diseño original contemplaba pero que **no** se ejecutaron po
 
 | Evidencia | Archivo | Estado |
 |---|---|---|
-| Salida completa de `make` | `evidence/01_make.log` | Versionada |
-| Validación de las dos configuraciones | `evidence/02_config.log` | Versionada |
-| Salida de los dos nodos | `evidence/03_demo.log` | Versionada |
-| Puertos en escucha | `evidence/04_ports.txt` | Versionada |
+| Salida completa de `make` (WSL2) | `evidence/01_make.log` | Versionada |
+| Validación de las dos configuraciones (WSL2) | `evidence/02_config.log` | Versionada |
+| Salida de los dos nodos (WSL2) | `evidence/03_demo.log` | Versionada |
+| Puertos en escucha (WSL2) | `evidence/04_ports.txt` | Versionada |
 | Script que regenera la evidencia | `scripts/capture_evidence.sh` | Versionado |
+| **Salida del nodo 0 en máquina A (lab)** | `evidence/lab_nodo0_A.txt` | Adjunta en entrega |
+| **Salida del nodo 1 en máquina B (lab)** | `evidence/lab_nodo1_B.txt` | Adjunta en entrega |
+| **Build en laboratorio (GCC 13.3.0, Ubuntu)** | `evidence/lab_build.log` | Adjunta en entrega |
 
-> **Reproducible.** `sh scripts/capture_evidence.sh` vuelve a generar los cuatro archivos desde cero. Los logs se transcriben tal como salen; lo único que cambia entre corridas es el `pid` del nodo 1 y el tiempo activo.
+> **Reproducible.** `sh scripts/capture_evidence.sh` vuelve a generar los cuatro archivos de WSL2 desde cero. Los logs de laboratorio se obtuvieron ejecutando la misma secuencia en las dos máquinas físicas (A: `192.0.2.10`, B: `192.0.2.11`) con `bind_address = 0.0.0.0` y `seed_host = 192.0.2.10`. Lo único que cambia entre corridas es el `pid` del nodo 1 y el tiempo activo.
 
 ### 10.4 Problemas encontrados
 
@@ -886,6 +893,43 @@ Estos problemas aparecieron al integrar los módulos y se corrigieron antes de l
 
 ---
 
+### 10.5 Ejecución en el laboratorio (máquinas físicas separadas)
+
+La demostración se repitió en las dos máquinas del laboratorio de la Escuela para validar que el protocolo funciona sobre la red real del curso.
+
+**Entorno.**
+- **Máquina A (nodo 0 / home):** `192.0.2.10`, Ubuntu 24.04, kernel `6.8.0-138-generic`, GCC 13.3.0.
+- **Máquina B (nodo 1):** `192.0.2.11`, Ubuntu 24.04, kernel `6.8.0-138-generic`, GCC 13.3.0.
+- Configuración: `bind_address = 0.0.0.0` en ambos; `seed_host = 192.0.2.10` en el nodo 1.
+- Puerto de escucha: A en `27300`, B en `27304`.
+
+**Resultado.** La corrida completa coincidió con la de WSL2, confirmando que el DSM funciona sobre la red del laboratorio sin cambios en el código.
+
+| Métrica | Nodo 0 (A) | Nodo 1 (B) |
+|---|---:|---:|
+| fallos de página | 0 | 2 |
+| lecturas remotas | 1 | 1 |
+| escrituras remotas | 0 | 1 |
+| mensajes enviados | 3 | 3 |
+| mensajes recibidos | 3 | 3 |
+| bytes enviados | 8 384 | 4 288 |
+| bytes recibidos | 4 288 | 8 384 |
+| errores | 0 | 0 |
+| tiempos agotados | 0 | 0 |
+
+**Secuencia observada en la red real:**
+1. Nodo 1 provoca fallo de lectura → `PAGE_REQUEST` (64 B) → Nodo 0 responde `PAGE_DATA` (4 160 B).
+2. Nodo 1 provoca fallo de escritura → `OWNERSHIP_REQUEST` (64 B) → Nodo 0 concede con `OWNERSHIP_GRANT` + datos (4 160 B).
+3. Nodo 1 relee localmente (sin tráfico).
+4. Nodo 1 hace *writeback* → `PAGE_WRITEBACK` (4 160 B) → Nodo 0 responde `ACK` (64 B).
+5. Nodo 0 vuelve a leer la página y obtiene el texto escrito por el nodo 1.
+
+Los bytes están espejados exactamente: lo que A envía (8 384 B) es lo que B recibe, y viceversa. No hubo pérdidas, duplicados ni *timeouts*.
+
+> **Evidencia.** Los logs completos están en `evidence/lab_nodo0_A.txt` y `evidence/lab_nodo1_B.txt`. La captura de la conexión TCP la confirma: `escuchando en 0.0.0.0:27300` / `conectado desde ('192.0.2.11', 42038)`.
+
+---
+
 ## 11. Limitaciones conocidas
 
 | # | Limitación | Impacto | Mitigación actual |
@@ -900,11 +944,10 @@ Estos problemas aparecieron al integrar los módulos y se corrigieron antes de l
 | 8 | `dsmctl` es un stub | No hay consulta de estado por CLI | Se implementa en E3 |
 | 9 | Una conexión TCP por RPC, sin persistencia ni *checksum* | Más `connect()` de los necesarios; sin detección de corrupción | Se optimiza en E3 |
 | 10 | `control_port`, `heartbeat_port` y `web_port` están reservados pero sin servicio | Solo `listen_port` se abre | Se usan en E3 y en el entregable final |
-| 11 | Validado en WSL2 (Alpine/musl con GCC y glibc con clang) | Falta la validación en las máquinas del laboratorio | Se repite la compilación y la demo allí antes de la entrega |
 
 **Tabla 9.** Limitaciones conocidas.
 
-> **Nota.** Las limitaciones 1 a 10 son de alcance y están asumidas desde el diseño. La 11 es de entorno: el código compila sin advertencias en musl y en glibc, pero la ejecución documentada se hizo en WSL2, no en el laboratorio.
+> **Nota.** Las limitaciones 1 a 10 son de alcance y están asumidas desde el diseño. La validación en las máquinas del laboratorio (línea 11 anterior) se completó y ya no es una limitación: el prototipo compila sin advertencias con GCC 13.3.0 (Ubuntu 24.04, kernel 6.8.0) y la demostración de dos nodos se ejecutó sobre la red física del curso (`192.0.2.10` ↔ `192.0.2.11`).
 
 ---
 
@@ -920,8 +963,7 @@ Estos problemas aparecieron al integrar los módulos y se corrigieron antes de l
 | 6 | Métricas de *speedup* y eficiencia | Media | E3 |
 | 7 | Panel web de solo lectura | Baja | E3 / final |
 | 8 | Manejo de fallos de nodo | Baja | Final |
-| 9 | Validación en máquinas del laboratorio | Media | E3 / final |
-| 10 | Extras 1 y 2 | Baja | Final |
+| 9 | Extras 1 y 2 | Baja | Final |
 
 **Tabla 10.** Trabajo pendiente para el prototipo 2.
 
@@ -929,11 +971,13 @@ Estos problemas aparecieron al integrar los módulos y se corrigieron antes de l
 
 ## 13. Conclusiones
 
-> **Alcance de estas conclusiones.** Cubren el diseño, la implementación y la ejecución del prototipo 1 en WSL2. Los números citados salen de `evidence/03_demo.log`; no hay resultados estimados.
+> **Alcance de estas conclusiones.** Cubren el diseño, la implementación y la ejecución del prototipo 1 en WSL2 **y en las máquinas del laboratorio**. Los números citados salen de `evidence/03_demo.log` (WSL2) y de `evidence/lab_nodo0_A.txt` / `evidence/lab_nodo1_B.txt` (laboratorio); no hay resultados estimados.
 
 **Sobre la viabilidad del mecanismo.** La combinación de `mmap(PROT_NONE)`, un manejador de `SIGSEGV` con `SA_SIGINFO` y `mprotect` permite materializar páginas bajo demanda sin que la aplicación cambie una línea. El costo está en que el manejador debe ser mínimo: cualquier operación que no sea segura para señales convierte un fallo de página en un interbloqueo.
 
-**Sobre lo observado.** El nodo 1 leyó una página que nunca había existido en su espacio de direcciones, la escribió y la devolvió. El nodo 0, que la había creado, vio el texto del nodo 1 después del writeback. En el camino hubo exactamente dos fallos de página (`page_faults = 2`), una lectura remota y una escritura remota, y tres mensajes en cada sentido, con 4 288 B enviados por el cliente y 8 384 B enviados por el home. Esos números cuadran con el protocolo: el home manda datos en `PAGE_DATA` y `OWNERSHIP_GRANT` (dos mensajes de 4 160 B) más un `ACK` de 64 B; el cliente manda dos peticiones de 64 B y un `WRITEBACK` de 4 160 B.
+**Sobre lo observado.** En ambos entornos (WSL2 y laboratorio), el nodo 1 leyó una página que nunca había existido en su espacio de direcciones, la escribió y la devolvió. El nodo 0, que la había creado, vio el texto del nodo 1 después del writeback. En el camino hubo exactamente dos fallos de página (`page_faults = 2`), una lectura remota y una escritura remota, y tres mensajes en cada sentido, con 4 288 B enviados por el cliente y 8 384 B enviados por el home. Esos números cuadran con el protocolo: el home manda datos en `PAGE_DATA` y `OWNERSHIP_GRANT` (dos mensajes de 4 160 B) más un `ACK` de 64 B; el cliente manda dos peticiones de 64 B y un `WRITEBACK` de 4 160 B.
+
+La corrida en el laboratorio confirmó que el mismo binario compilado con GCC 13.3.0 sobre Ubuntu 24.04 (kernel 6.8.0) funciona idéntico sobre la red física (`192.0.2.10` ↔ `192.0.2.11`). No hubo *timeouts*, pérdidas ni corrupción; los contadores de bytes están espejados en los dos extremos.
 
 **Sobre `mmap`, `mprotect` y señales.** Tres lecciones concretas. Primera: no se puede escribir sobre una página en `PROT_NONE`, y abrirla antes de copiar expone datos a medias; la solución fue mapear la misma memoria dos veces. Segunda: `sigaltstack` es por hilo, no por proceso, así que cada hilo que toca la ventana necesita la suya. Tercera: `sem_wait` no es segura dentro de un manejador; el hilo debe dormirse con `sigsuspend` y el resolutor despertarlo con `pthread_kill`.
 

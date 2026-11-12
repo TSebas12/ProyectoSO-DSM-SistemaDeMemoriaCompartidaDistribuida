@@ -2,7 +2,7 @@
 
 > Diseño de un sistema DSM con paginación bajo demanda y coherencia MSI sobre Linux, escrito en C11.
 
-**Estado:** documentación de diseño completada · prototipo 1 compilando y ejecutándose en pruebas
+**Estado:** documentación de diseño completada · **prototipo 1 compilando y ejecutándose en WSL2 y en máquinas del laboratorio**
 **Curso:** IC-6600 Principios de Sistemas Operativos
 **Institución:** Instituto Tecnológico de Costa Rica — Escuela de Ingeniería en Computación
 
@@ -68,7 +68,7 @@ flowchart LR
 | Entregable | Fecha | Estado |
 |---|---|---|
 | E1 — Documento de diseño | 6 nov 2026 | ✅ Completado |
-| E2 — Prototipo 1 y arquitectura actualizada | 13 nov 2026 | 🚧 En progreso — prototipo funcional y evidencia registrada |
+| E2 — Prototipo 1 y arquitectura actualizada | 13 nov 2026 | ✅ **Completado — validado en WSL2 y en laboratorio (2 máquinas físicas)** |
 | E3 — Prototipo 2 y arquitectura actualizada | 20 nov 2026 | ⏳ Pendiente |
 | Entrega final — Demo en vivo | 27 nov 2026 | ⏳ Pendiente |
 

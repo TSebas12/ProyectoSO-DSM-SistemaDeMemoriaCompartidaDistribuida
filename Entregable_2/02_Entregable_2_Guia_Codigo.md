@@ -55,7 +55,7 @@ La sección 6 define el contrato entre coherencia y red, que es la frontera que 
 
 ## 3. Cómo se verifica
 
-El proyecto se compiló y se ejecutó en Linux (Alpine 3.20.3 sobre WSL2, GCC 13.2.1) y los 14 archivos se compilaron además con clang contra cabeceras de glibc.
+El proyecto se compiló y se ejecutó en Linux (Alpine 3.20.3 sobre WSL2, GCC 13.2.1) y los 14 archivos se compilaron además con clang contra cabeceras de glibc. **También se compiló y ejecutó en las dos máquinas del laboratorio** (Ubuntu 24.04, kernel 6.8.0-138-generic, GCC 13.3.0).
 
 ```bash
 cd Entregable_2/prototipo1
@@ -66,7 +66,7 @@ sh scripts/capture_evidence.sh     # regenera evidence/
 make clean
 ```
 
-Resultado: **0 errores y 0 advertencias** con `-Wall -Wextra -Wpedantic`. Los `_Static_assert` de tamaño pasan en cada compilación. La evidencia de la corrida está en `evidence/`.
+Resultado: **0 errores y 0 advertencias** con `-Wall -Wextra -Wpedantic` tanto en WSL2 (musl) como en el laboratorio (glibc). En GCC 13.3.0 se añadió precisión literal en `config.c` (líneas 27, 33, 50: `%.63s`, `%.255s`, `%.255s`) para evitar `-Wformat-truncation`. Los `_Static_assert` de tamaño pasan en cada compilación. La evidencia de la corrida está en `evidence/`.
 
 > **Antes de integrar** solo existía una validación sintáctica con `pycparser`; esa etapa quedó atrás y no se usa como prueba de compilación.
 
@@ -365,9 +365,9 @@ Nodo 0 crea las 4 páginas y espera. Nodo 1 lee la página 0 (`I → S`), la esc
 
 ## 9. Resumen
 
-- Doce cabeceras y catorce fuentes compilan y enlazan sin advertencias.
+- Doce cabeceras y catorce fuentes compilan y enlazan sin advertencias (GCC 13.2.1 musl, GCC 13.3.0 glibc, clang 22.1.8 glibc).
 - La coherencia no conoce sockets: se une por `dsm_coherence_ops_t`.
 - La jerarquía de locks se verifica en tiempo de ejecución.
 - El manejador de señales no toma locks ni reserva memoria.
-- La demo de dos nodos se ejecutó y su salida está en `evidence/`.
+- La demo de dos nodos se ejecutó en WSL2 y en las dos máquinas físicas del laboratorio (`192.0.2.10` ↔ `192.0.2.11`); su salida está en `evidence/`.
 - Lo que no está implementado se declara: `dsmctl`, expulsión, terceros, métricas y pruebas unitarias.

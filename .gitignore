@@ -55,6 +55,11 @@ core.*
 Thumbs.db
 desktop.ini
 
+# --- Imágenes de evidencia (no versionar; usar evidence/ con logs) ---
+Entregable_2/*.png
+Entregable_2/*.jpg
+Entregable_2/*.jpeg
+
 # --- Entornos y temporales ----------------------------------
 .env
 venv/

@@ -24,13 +24,13 @@ char line[1024];
 while(fgets(line,sizeof(line),f)){char*hash=strchr(line,'#');if(hash)*hash='\0';char*eq=strchr(line,'=');if(!eq)continue;*eq='\0';char key[128],val[512];size_t klen=(size_t)(eq-line);if(klen>=sizeof(key))klen=sizeof(key)-1;memcpy(key,line,klen);key[klen]='\0';snprintf(val,sizeof(val),"%s",eq+1);trim(key);trim(val);if(!key[0])continue;
 unsigned long u;if(!strcmp(key,"config_version")&&pu(val,&u)==0)cfg->config_version=(uint32_t)u;
 else if(!strcmp(key,"node_id")&&pu(val,&u)==0)cfg->node_id=(uint32_t)u;
-else if(!strcmp(key,"bind_address"))snprintf(cfg->bind_address,sizeof(cfg->bind_address),"%s",val);
+else if(!strcmp(key,"bind_address"))snprintf(cfg->bind_address,sizeof(cfg->bind_address),"%.63s",val);
 else if(!strcmp(key,"listen_port")&&pu(val,&u)==0)cfg->listen_port=(uint16_t)u;
 else if(!strcmp(key,"control_port")&&pu(val,&u)==0)cfg->control_port=(uint16_t)u;
 else if(!strcmp(key,"heartbeat_port")&&pu(val,&u)==0)cfg->heartbeat_port=(uint16_t)u;
 else if(!strcmp(key,"web_port")&&pu(val,&u)==0)cfg->web_port=(uint16_t)u;
 else if(!strcmp(key,"web_enabled")&&pu(val,&u)==0)cfg->web_enabled=(uint16_t)u;
-else if(!strcmp(key,"seed_host"))snprintf(cfg->seed_host,sizeof(cfg->seed_host),"%s",val);
+else if(!strcmp(key,"seed_host"))snprintf(cfg->seed_host,sizeof(cfg->seed_host),"%.255s",val);
 else if(!strcmp(key,"seed_port")&&pu(val,&u)==0)cfg->seed_port=(uint16_t)u;
 else if(!strcmp(key,"page_size")&&pu(val,&u)==0)cfg->page_size=(uint32_t)u;
 else if(!strcmp(key,"node_memory")&&pu(val,&u)==0)cfg->node_memory=(uint64_t)u;
@@ -47,7 +47,7 @@ else if(!strcmp(key,"thread_pool_size")&&pu(val,&u)==0)cfg->thread_pool_size=(ui
 else if(!strcmp(key,"fault_queue_size")&&pu(val,&u)==0)cfg->fault_queue_size=(uint32_t)u;
 else if(!strcmp(key,"eviction_policy")){int e=pev(val);if(e>=0)cfg->eviction_policy=(uint32_t)e;}
 else if(!strcmp(key,"log_level")){int e=pll(val);if(e>=0)cfg->log_level=(uint32_t)e;}
-else if(!strcmp(key,"log_file"))snprintf(cfg->log_file,sizeof(cfg->log_file),"%s",val);
+else if(!strcmp(key,"log_file"))snprintf(cfg->log_file,sizeof(cfg->log_file),"%.255s",val);
 else if(!strcmp(key,"stats_interval_ms")&&pu(val,&u)==0)cfg->stats_interval_ms=(uint32_t)u;
 else if(!strcmp(key,"barrier_timeout_ms")&&pu(val,&u)==0)cfg->barrier_timeout_ms=(uint32_t)u;
 else if(!strcmp(key,"replication_factor")&&pu(val,&u)==0)cfg->replication_factor=(uint32_t)u;
