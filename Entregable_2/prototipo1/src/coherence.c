@@ -304,6 +304,15 @@ dsm_status_t dsm_coherence_handle_fault(dsm_coherence_t *co, const dsm_fault_req
                 return DSM_OK;
             }
         }
+        /*
+         * El home no puede pedirse una página a sí mismo: si ya la entregó a
+         * otro nodo, haría falta PAGE_FORWARD (E3). Se devuelve un error claro
+         * en lugar de abrir un RPC contra el propio listener.
+         */
+        if (co->node_id == co->home_node && res == DSM_RES_NOT_RESIDENT) {
+            dsm_mutex_unlock(&page->lock);
+            return DSM_ERR_NOENT;
+        }
         break;
     }
 
@@ -586,6 +595,9 @@ static dsm_status_t handle_writeback(dsm_coherence_t *co, const dsm_msg_t *msg)
     }
     dsm_memory_protect(co->mem, msg->page_id, DSM_PAGE_S);
     dsm_mutex_unlock(&page->lock);
+
+    /* El home vuelve a tener una copia limpia y compartida con el emisor. */
+    dir_mark_sharer(co, msg->page_id, msg->src_node);
 
     if (co->ops.send == NULL) {
         return DSM_ERR_NOTSUP;

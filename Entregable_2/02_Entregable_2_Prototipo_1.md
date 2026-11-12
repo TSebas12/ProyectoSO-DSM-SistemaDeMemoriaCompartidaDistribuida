@@ -14,12 +14,12 @@
 | **Integrantes** | José Daniel Monterrosa Quirós · Sebastián Agüero Brenes |
 | **Pareja** | #3 — rango de puertos `27300–27399` |
 | **Fecha oficial** | 13 de noviembre de 2026 |
-| **Versión del documento** | 0.1 (borrador estructurado) |
-| **Estado** | En construcción — pendiente de completar con la implementación |
+| **Versión del documento** | 1.0 |
+| **Estado** | Prototipo 1 implementado, compilado y ejecutado |
 | **Repositorio Git** | https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida |
 | **Documento base** | `Entregable_1/01_Entregable_1_Diseno.md` |
 
-> **Cómo leer este documento.** Las secciones 1 a 6 describen el prototipo y su relación con el diseño del Entregable 1 y están redactadas en su mayor parte. La sección 7 documenta los módulos ya escritos y deja marcado lo que falta. Los marcadores `[PENDIENTE: ...]` señalan siempre lo mismo: algo que depende de compilar, de ejecutar o de un módulo que todavía no existe. **No se debe afirmar ningún resultado que no haya sido ejecutado y registrado.**
+> **Cómo leer este documento.** Las secciones 1 a 6 describen el prototipo y su relación con el diseño del Entregable 1. La sección 7 documenta los módulos implementados, la 9 explica cómo se compila y se ejecuta, y la 10 recoge las pruebas que se ejecutaron con su evidencia. **No se afirma ningún resultado que no haya sido ejecutado y registrado.**
 
 > **Regla de honestidad técnica.** Si una función no se implementó, se declara en la sección 11 (limitaciones) y se traslada a la sección 12 (trabajo pendiente). Un prototipo incompleto y bien documentado vale más que uno que dice funcionar y no se puede reproducir.
 
@@ -31,11 +31,11 @@ El presente documento describe el **Prototipo 1** del sistema de memoria compart
 
 El prototipo demuestra el núcleo funcional del sistema: dos nodos independientes, ejecutados como procesos separados sobre Linux y comunicados por sockets TCP, forman un espacio de memoria lógicamente compartido. Cada nodo reserva una ventana de direcciones virtuales con `mmap`, la protege con `mprotect(PROT_NONE)` y captura los accesos a páginas no residentes mediante un manejador de `SIGSEGV` instalado con `sigaction` y `SA_SIGINFO`. El manejador no resuelve el fallo por sí mismo: encola el evento y un hilo resolutor ejecuta el protocolo de red, transfiere la página y ajusta los permisos para que el hilo de la aplicación continúe su ejecución de forma transparente.
 
-Sobre ese mecanismo se implementa un subconjunto del protocolo de coherencia **MSI**: una página puede estar *Modified*, *Shared* o *Invalid*, y las escrituras invalidan las copias remotas mediante mensajes `INVALIDATE` / `INVALIDATE_ACK` coordinados por el nodo hogar (*home*) de cada página.
+Sobre ese mecanismo se implementa un subconjunto del protocolo de coherencia **MSI**: una página puede estar *Modified*, *Shared* o *Invalid*. El directorio vive en el nodo hogar (*home*) de la página, que decide quién la posee y en qué estado. El código incluye los mensajes `INVALIDATE` / `INVALIDATE_ACK`, pero la demostración de dos nodos no los necesita: la invalidación de un tercer *sharer* queda para el Prototipo 2.
 
 El prototipo **no incluye** todavía expulsión de páginas, aplicaciones de prueba completas, métricas de rendimiento ni los extras. Esos elementos corresponden al Prototipo 2 (Entregable 3) y a la Entrega Final. El documento declara explícitamente esas limitaciones y el trabajo pendiente.
 
-**Resultado esperado:** un hilo del nodo 1 lee correctamente una página cuyo contenido reside en el nodo 0, y una escritura posterior del nodo 0 invalida la copia del nodo 1, que vuelve a obtenerla al acceder de nuevo.
+**Resultado obtenido:** el nodo 1 lee una página que nunca existió en su espacio de direcciones y que el nodo 0 creó en el suyo, la escribe, la devuelve con un *writeback* y el nodo 0 lee después el texto que escribió el nodo 1. La corrida completa está en la sección 10 y en `evidence/03_demo.log`.
 
 ---
 
@@ -81,10 +81,12 @@ El prototipo **no incluye** todavía expulsión de páginas, aplicaciones de pru
 | 3 | Módulos implementados y archivos | 7.7 |
 | 4 | Estructuras implementadas y tamaños | 8.1 |
 | 5 | Puertos por nodo | 9.3 |
-| 6 | Escenarios de prueba | 10.1 |
+| 6 | Escenarios de prueba ejecutados | 10.1 |
+| 6b | Pruebas no ejecutadas y su motivo | 10.1 |
 | 7 | Resultados obtenidos | 10.2 |
-| 8 | Limitaciones conocidas | 11 |
-| 9 | Trabajo pendiente para el prototipo 2 | 12 |
+| 8 | Problemas de integración corregidos | 10.4 |
+| 9 | Limitaciones conocidas | 11 |
+| 10 | Trabajo pendiente para el prototipo 2 | 12 |
 
 ---
 
@@ -127,14 +129,14 @@ El Entregable 1 definió la arquitectura, el modelo de coherencia, el protocolo 
 |---|---|
 | Ventana local + pool de marcos | Implementado: ventana de 256 MB y 256 marcos de contabilidad (sin expulsión) |
 | `mmap` + `mprotect` + `sigaction` | Implementado, incluida pila alternativa por hilo |
-| Protocolo con cabecera de 64 B | Pendiente: corresponde al módulo de red |
+| Protocolo con cabecera de 64 B | Implementado: `protocol.c` codifica y decodifica la cabecera real |
 | MSI con directorio por página | Implementado: MSI completo y directorio local en el nodo home |
-| API `dsm_init` / `dsm_create` / `dsm_attach` | Pendiente: corresponde al runtime y a `dsm_api.c` |
-| CLI (web fuera de alcance) | Pendiente: corresponde a `dsmctl` |
-| Aplicaciones de prueba | Fuera de alcance |
+| API `dsm_init` / `dsm_create` / `dsm_attach` | Implementado: cuatro funciones en `dsm_api.c` |
+| CLI (web fuera de alcance) | Stub: `dsmctl` no consulta el nodo |
+| Aplicaciones de prueba | Fuera de alcance, salvo `demo_page.c` |
 | Extras | Fuera de alcance |
 
-> **Estado de verificación.** El código de los módulos marcados como implementados está escrito y revisado, pero **todavía no se compiló**: el equipo no tiene un entorno Linux disponible al momento de redactar esta versión. La sección 9 registra el procedimiento y la sección 10 los resultados, que se completan en el laboratorio.
+> **Estado de verificación.** Los módulos implementados compilan sin advertencias con GCC 13.2.1 y clang, y la demostración de dos nodos se ejecutó. La sección 9 registra el procedimiento y la sección 10 los resultados con su evidencia.
 
 ### 4.4 Metodología de trabajo
 
@@ -257,10 +259,10 @@ sequenceDiagram
 | Área | Diseño del E1 | Implementación real | Motivo |
 |---|---|---|---|
 | Memoria | Ventana de 256 MB y pool de 256 marcos | Ventana de 256 MB sobre `memfd` con doble mapeo; 256 marcos de contabilidad | El resolutor copia por un mapeo `RW` privado y los hilos de usuario solo ven la ventana cuando se publica el permiso |
-| Red | Conexiones persistentes entre todos los nodos | Pendiente: la define el módulo de red | Pendiente |
+| Red | Conexiones persistentes entre todos los nodos | Una conexión TCP por RPC, con *timeout* de conexión y de E/S; la respuesta viaja por el socket de la petición | Con dos nodos y cuatro páginas, abrir una conexión por mensaje simplifica el enrutamiento y evita mantener estado de conexión |
 | Coherencia | MSI con directorio distribuido | MSI con directorio local en el nodo home (bitmap de *sharers*); un tercero se rechaza con `OWNERSHIP_DENY` | Con dos nodos no existen terceros; la invalidación múltiple queda para el E3 |
 | Concurrencia | Jerarquía global de locks | Jerarquía `GLOBAL → OBJECT → PAGE → FRAME` verificada en ejecución | Detectar orden invertido sin costo cuando la comprobación se desactiva |
-| Configuración | `dsm.conf` con validación | Pendiente: la define el módulo de configuración | Pendiente |
+| Configuración | `dsm.conf` con validación | Parser plano `clave = valor`, con valores por defecto, validación de rangos y guardado | El formato del E1 con secciones no lo leía ningún código; se adoptó el que el módulo implementa y se documentó |
 
 ### 5.5 Decisiones tomadas durante la implementación
 
@@ -310,16 +312,16 @@ sequenceDiagram
 
 **C-04 — Cola de fallos.** El E1 describía una cola «lock-free o con un mutex probado como seguro», sin decidir. Se eligió el anillo sin locks porque la alternativa correcta —un mutex tomado dentro del manejador— depende de que el hilo interrumpido no lo tuviera, y eso no se puede garantizar. El hilo que falla se duerme con `sigsuspend` y el resolutor lo despierta con `pthread_kill`.
 
-> **Pendiente.** Los cambios asociados a los módulos de red y configuración se agregan cuando esos módulos estén implementados.
+> **Nota.** Los cambios de red y configuración no son solo de forma: el protocolo pasó de «pendiente» a una cabecera de 64 B serializada en orden de red, y el parser dejó el formato con secciones porque ningún código lo leía.
 
 ### 6.4 Impacto en API, protocolo, configuración y estructuras
 
 | Componente | Impacto |
 |---|---|
-| **API** | Las firmas del E1 se mantienen como contrato. En esta versión están implementados los módulos internos que el API usará (`dsm_memory_*`, `dsm_fault_*`, `dsm_coherence_*`); las funciones públicas `dsm_init`, `dsm_create`, `dsm_attach` y `dsm_detach` quedan en `dsm_api.c`, todavía sin escribir. |
-| **Protocolo** | Los códigos de mensaje del E1 se conservan tal cual en `dsm_msg_type_t`. La cabecera de 64 B y su serialización son responsabilidad del módulo de red, que aún no existe. |
-| **Configuración** | Cambia el valor por defecto del rango de puertos a `27300–27399`; el resto de claves se mantiene. |
-| **Estructuras** | Se mantienen los tamaños del E1 en los módulos implementados: `dsm_local_page_t` 56 B, `dsm_frame_t` 40 B, `dsm_directory_entry_t` 64 B y `dsm_stats_t` 128 B, verificados con `_Static_assert`. La cabecera de 64 B y `dsm_config_t` de 704 B pertenecen a los módulos pendientes. |
+| **API** | El contrato del E1 se redujo a lo que se puede probar: `dsm_init`, `dsm_shutdown`, `dsm_create` y `dsm_attach`. `dsm_detach` y `dsm_node_id` no se implementaron y se declaran en la sección 11. |
+| **Protocolo** | Los códigos de mensaje del E1 se conservan en `dsm_msg_type_t`. La cabecera de 64 B se serializa en orden de red en `protocol.c`; el campo `checksum` viaja en cero (sección 11). |
+| **Configuración** | Se adopta el formato plano `clave = valor`, con el rango de puertos `27300–27399` y `node_memory` como tamaño del pool de marcos. |
+| **Estructuras** | Se mantienen los tamaños del E1 en los módulos implementados: `dsm_local_page_t` 56 B, `dsm_frame_t` 40 B, `dsm_directory_entry_t` 64 B y `dsm_stats_t` 128 B, verificados con `_Static_assert`. La cabecera mide 64 B por construcción del códec y `dsm_config_t` 704 B. |
 | **Compatibilidad** | El prototipo 1 no es compatible con el diseño del E1 en el valor de los puertos, pero sí en el esquema. |
 
 ---
@@ -407,30 +409,45 @@ static void dsm_segv_handler(int sig, siginfo_t *si, void *uctx)
 
 ### 7.2 Módulo de red
 
-**Responsabilidad.** Establecer y mantener las conexiones TCP, serializar y deserializar mensajes con la cabecera de 64 bytes, y atender solicitudes y respuestas.
+**Responsabilidad.** Abrir el puerto de escucha, serializar y deserializar mensajes con la cabecera de 64 bytes, y transportar las peticiones de coherencia.
 
 | Aspecto | Detalle |
 |---|---|
 | Archivos | `src/net.c`, `src/protocol.c`, `include/dsm_net.h`, `include/dsm_protocol.h` |
-| Modelo | Pendiente de definir en el módulo de red |
-| Cabecera | 64 B, `magic = 0x44534D31` |
-| Endianness | `htonl` / `ntohl` en todos los campos |
-| Lectura | `read_full()` para cabecera y payload |
-| Mensajes implementados | Pendiente: el catálogo de códigos ya está fijado en `dsm_msg_type_t` |
+| Modelo | Una conexión TCP por RPC; el servidor responde por el socket en el que llegó la petición |
+| Cabecera | 64 B, `magic = 0x44534D31` (`"DSM1"`), `version = 1` |
+| Endianness | `htonl` / `htons` en todos los campos; los `uint64_t` se parten en dos `uint32_t` |
+| Lectura | `dsm_net_read_full()` para cabecera y carga útil |
+| Mensajes implementados | `PAGE_REQUEST`, `PAGE_DATA`, `OWNERSHIP_REQUEST`, `OWNERSHIP_GRANT`, `OWNERSHIP_DENY`, `PAGE_WRITEBACK`, `PAGE_WRITEBACK_ACK`, `INVALIDATE`, `INVALIDATE_ACK`, `ERROR` |
+| Validación | Se rechaza un mensaje con `magic` o `version` incorrectos, o con `payload_len > max_message_size` |
+| Contadores | `dsm_net_set_stats()` engancha los contadores; cada envío y recepción suma mensajes y bytes |
 
 ```c
-/* Pendiente: pegar la cabecera real y la función de envío cuando exista net.c. */
+typedef struct dsm_msg_header {
+    uint64_t request_id;    uint64_t page_id;
+    uint32_t magic;         uint16_t version;      uint16_t type;
+    uint32_t flags;         uint32_t header_len;   uint32_t payload_len;
+    uint32_t src_node;      uint32_t dst_node;     uint32_t status;
+    uint32_t checksum;      uint32_t payload_off;
+    uint16_t ttl;           uint16_t reserved;     uint32_t reserved2;
+} dsm_msg_header_t;
+
+_Static_assert(sizeof(dsm_msg_header_t) == 64, "dsm_msg_header_t debe medir 64 bytes");
 ```
+
+**Enrutamiento de la respuesta.** La coherencia solo conoce `dsm_coherence_ops_t`; cuando el nodo home atiende un `PAGE_REQUEST`, responde con `ops.send()`. Para que esa respuesta llegue al cliente correcto, el hilo de escucha guarda el descriptor aceptado en una variable `_Thread_local` antes de llamar a `dsm_coherence_handle_message()`. Así el `rpc()` del cliente lee la respuesta por la misma conexión que abrió, sin un segundo `connect()`.
+
+> **Nota.** El campo `checksum` se serializa pero viaja en cero: no hay cálculo de integridad en el prototipo 1 (sección 11).
 
 ### 7.3 Módulo de concurrencia
 
-**Responsabilidad.** Coordinar hilos de usuario, hilo resolutor, hilo de escucha y hilo de heartbeat sin interbloqueos.
+**Responsabilidad.** Coordinar el hilo resolutor, el hilo de escucha y los hilos de usuario sin interbloqueos.
 
 | Aspecto | Detalle |
 |---|---|
 | Archivos | `src/sync.c`, `src/runtime.c`, `include/dsm_sync.h`, `include/dsm_runtime.h` |
 | Primitivas | Pthreads, mutex, variables de condición, semáforos POSIX |
-| Hilos del runtime | Uno de escucha, uno resolutor y uno de heartbeat; los hilos de usuario los crea la aplicación |
+| Hilos del runtime | Uno de escucha y uno resolutor; los hilos de usuario los crea la aplicación |
 | Orden de locks | `GLOBAL → OBJECT → PAGE → FRAME`, verificado en ejecución |
 | Regla | Nunca se espera red con un lock de página tomado |
 
@@ -445,8 +462,10 @@ static void dsm_segv_handler(int sig, siginfo_t *si, void *uctx)
 | `I → S` | Lectura de página ausente | `PAGE_REQUEST` / `PAGE_DATA` | `S` |
 | `S → M` | Escritura sobre copia compartida | `OWNERSHIP_REQUEST` / invalidaciones / ACK | `M` |
 | `S → I` | `INVALIDATE` recibido | `INVALIDATE_ACK` | `I` |
-| `M → S` | Lectura remota del home | `PAGE_DATA` | `S` |
+| `M → S` | Lectura remota del home o *writeback* | `PAGE_DATA` | `S` |
 | `M → I` | Escritura remota concedida | `OWNERSHIP_GRANT` | `I` |
+
+**Qué se ejecutó en la demo.** `I → S` (lectura del nodo 1), `S → M` (escritura del nodo 1), `M → I` (el home cede la propiedad) y `M → S` (el nodo 1 baja a `S` tras el *writeback*). La transición `S → I` está implementada pero no se ejecutó: haría falta un tercer nodo que conserve una copia compartida.
 
 ```mermaid
 stateDiagram-v2
@@ -467,101 +486,102 @@ Todas las transiciones del diagrama están implementadas en `dsm_msi_next_state(
 
 ### 7.5 API disponible
 
-| Función | Estado | Observaciones |
+La API pública del prototipo 1 son cuatro funciones, declaradas en `include/dsm_api.h`. No se exponen más porque la demostración no las necesita y una API que no se usa no se puede probar.
+
+| Función | Estado | Comportamiento real |
 |---|---|---|
-| `dsm_init` | Pendiente | Va en `dsm_api.c`; orquesta `dsm_memory_init`, `dsm_fault_install` y `dsm_coherence_init` |
-| `dsm_shutdown` | Pendiente | Debe llamar a `dsm_fault_shutdown()` para que el resolutor salga del bucle |
-| `dsm_create` | Pendiente | Reserva el objeto y define el rango de `page_id` |
-| `dsm_attach` | Pendiente | Registra el hilo con `dsm_fault_attach_thread()` antes de tocar la ventana |
-| `dsm_detach` | Pendiente | Llama a `dsm_fault_detach_thread()` |
-| `dsm_node_id` | Pendiente | Devuelve el `node_id` del runtime |
-| `dsm_stats` | Parcial | `dsm_stats_format()` ya produce el resumen; falta exponerlo por el API |
+| `dsm_init` | Implementada | Reserva el runtime, inicializa memoria, contadores, manejador de señales, red y coherencia, y lanza el hilo resolutor |
+| `dsm_shutdown` | Implementada | Detiene el resolutor y la red, desinstala el manejador y libera la ventana |
+| `dsm_create` | Implementada | Solo en el nodo home: crea el objeto de 4 páginas, las deja residentes en estado `M`, sucias, versión 1 y con permiso de escritura |
+| `dsm_attach` | Implementada | Registra el hilo actual en el manejador de `SIGSEGV`; sin esto el primer fallo mata el proceso |
+| `dsm_detach` | No implementada | El proceso de demostración termina después de la prueba; no se necesita |
+| `dsm_node_id` | No implementada | El `node_id` se lee de `rt->cfg` dentro del runtime |
+| `dsm_stats` | No implementada | Los contadores se leen con `dsm_stats_format()` desde el propio nodo |
+
+> **Nota.** `dsm_create` no reparte páginas entre nodos: el nodo 0 es el home fijo del prototipo 1 y los demás nodos llenan su tabla con los fallos que resuelve el runtime.
 
 ### 7.6 Configuración
 
+El parser es plano: `clave = valor`, comentarios con `#`, sin secciones. Una línea sin `=` se ignora, y una clave desconocida también. Los dos archivos del prototipo 1 son `config/dsm.conf` (nodo 0) y `config/dsm-node1.conf` (nodo 1).
+
 ```ini
-# config/dsm.conf — ejemplo para el prototipo 1 (pareja #3)
-
-[identity]
-node_id         = 0
-max_nodes       = 4
-
-[network]
-bind_address    = 0.0.0.0
-listen_port     = 27300
-seed_host       = 127.0.0.1
-seed_port       = 27300
+# config/dsm.conf — nodo 0 (home), pareja #3
+config_version = 1
+node_id = 0
+max_nodes = 16
+bind_address = 127.0.0.1
+listen_port = 27300
+control_port = 27301
+heartbeat_port = 27302
+web_port = 27303
+web_enabled = 0
+seed_host = 127.0.0.1
+seed_port = 27300
+page_size = 4096
+node_memory = 1048576
+window_size = 268435456
+network_timeout_ms = 2000
+connect_timeout_ms = 2000
+max_message_size = 8192
+fault_queue_size = 1024
+log_level = 2
+log_file = logs/dsm-node0.log
 port_range_start = 27300
-port_range_end   = 27399
-
-[ports]
-control_port    = 27301
-heartbeat_port  = 27302
-web_port        = 27303
-
-[memory]
-page_size       = 4096
-pool_frames     = 256
-window_size     = 268435456
-
-[timing]
-heartbeat_interval_ms = 1000
-heartbeat_timeout_ms  = 5000
-network_timeout_ms    = 3000
+port_range_end = 27399
 ```
 
-> **Nota.** El archivo `config/dsm.conf` lo produce el módulo de configuración, que todavía no existe. Las claves del ejemplo son las del E1 y sus valores coinciden con los predeterminados del código ya escrito: página de 4096 B, ventana de 256 MB, 256 marcos y espera de red de 3000 ms.
+El nodo 1 usa el mismo archivo con `node_id = 1`, `listen_port = 27304` y `seed_port = 27300`. Las dos configuraciones se validan con `./dsm_node --config <ruta> --check-config`.
+
+> **Nota.** `node_memory = 1048576` es el tamaño del pool de marcos (1 MB), no de la ventana: 1 MB / 4 KB = 256 marcos. La ventana de direcciones es `window_size`, 256 MB, y solo se compromete página a página.
 
 ### 7.7 Estructura del código fuente
 
-**Modelo de compilación.** Los archivos de `src/` se compilan en una biblioteca estática `libdsm.a`. Los binarios `dsm_node` y `dsmctl` enlazan esa biblioteca, y las pruebas hacen lo mismo. Así el runtime queda separado de los programas que lo usan y el mismo código se reutiliza en los tres. Todos los artefactos se generan en `build/`, que no se versiona.
+**Modelo de compilación.** Los archivos de `src/` se compilan a objetos en `build/` y se enlazan directamente en dos binarios: `dsm_node` y `dsmctl`. No hay biblioteca estática intermedia: con 14 unidades y un solo consumidor real, `libdsm.a` no aportaba nada al prototipo. Los objetos sí quedan separados para recompilar solo lo que cambia.
 
 ```text
-ProyectoSO/
+Entregable_2/prototipo1/
 ├── Makefile
-├── README.md
-├── config/
-│   ├── dsm.conf.example
-│   └── dsm.conf           configuración local (no versionada)
 ├── include/
-│   ├── dsm.h              API pública del DSM
+│   ├── dsm_api.h          API pública (init, shutdown, create, attach)
 │   ├── dsm_types.h        enums, constantes y estados MSI
 │   ├── dsm_config.h       dsm_config_t y parser
 │   ├── dsm_memory.h       ventana y pool de marcos
 │   ├── dsm_fault.h        handler de SIGSEGV y cola de fallos
 │   ├── dsm_protocol.h     cabecera de 64 B, opcodes y payloads
-│   ├── dsm_net.h          sockets, framing y conexiones
+│   ├── dsm_net.h          sockets, framing y contadores de red
 │   ├── dsm_coherence.h    MSI, directorio e invalidación
 │   ├── dsm_runtime.h      estado global del nodo e hilos
-│   ├── dsm_sync.h         locks y variables de condición
+│   ├── dsm_sync.h         locks, orden de adquisición y reloj
 │   ├── dsm_log.h          registro de eventos
-│   └── dsm_stats.h        contadores
+│   └── dsm_stats.h        contadores atómicos
 ├── src/
-│   ├── dsm_api.c          implementa el API público
+│   ├── dsm_api.c          implementa la API pública
 │   ├── runtime.c          arranque, hilos y parada ordenada
 │   ├── memory.c           mmap, marcos y mprotect
 │   ├── fault.c            sigaction, sigaltstack y cola
-│   ├── protocol.c         encode/decode y checksum
-│   ├── net.c              listen/connect/accept y read_full
+│   ├── protocol.c         encode/decode de la cabecera
+│   ├── net.c              listen/connect/accept y RPC
 │   ├── coherence.c        transiciones MSI
 │   ├── sync.c             primitivas de sincronización
-│   ├── config.c           lectura y validación de dsm.conf
+│   ├── config.c           lectura, validación y guardado de dsm.conf
 │   ├── log.c              implementación del log
-│   └── stats.c            contadores
-├── apps/
+│   ├── stats.c            contadores
 │   ├── node_main.c        binario dsm_node
-│   ├── ctl_main.c         binario dsmctl
-│   └── demo_page.c        app de prueba: lee y escribe la página 0
-├── tests/
-│   ├── test_config.c
-│   ├── test_protocol.c
-│   ├── test_fault.c
-│   └── test_msi.c
+│   ├── ctl_main.c         binario dsmctl (stub)
+│   └── demo_page.c        app de prueba: lee, escribe y devuelve la página 0
+├── config/
+│   ├── dsm.conf           nodo 0 (home), puertos 27300–27303
+│   └── dsm-node1.conf     nodo 1, puertos 27304–27307
 ├── scripts/
-│   ├── demo.sh            guion de demostración
-│   └── check_ports.sh     verifica los puertos 27300–27399
-├── build/                 artefactos de compilación (no versionado)
-└── evidence/
+│   ├── build.sh           compila desde cero
+│   ├── run.sh             arranca un nodo con un archivo de configuración
+│   ├── demo.sh            arranca los dos nodos y muestra sus salidas
+│   └── capture_evidence.sh regenera evidence/ con la salida real
+├── evidence/              logs de la ejecución (sí se versionan)
+├── build/                 objetos (no versionado)
+├── logs/                  salidas de la demo (no versionado)
+├── dsm_node               binario (no versionado)
+└── dsmctl                 binario (no versionado)
 ```
 
 | Módulo | Archivos | Responsable |
@@ -571,7 +591,7 @@ ProyectoSO/
 | Configuración y CLI | `config.c`, `ctl_main.c` | José Daniel Monterrosa |
 | Coherencia MSI | `coherence.c` | Sebastián Agüero |
 | Concurrencia | `sync.c`, `runtime.c` | Ambos |
-| API pública | `dsm_api.c`, `dsm.h` | Ambos |
+| API pública | `dsm_api.c`, `dsm_api.h` | Ambos |
 | Aplicación de prueba | `demo_page.c` | Ambos |
 | Soporte | `log.c`, `stats.c` | José Daniel / Sebastián |
 
@@ -579,18 +599,17 @@ ProyectoSO/
 
 **Targets del `Makefile`:**
 
-- `make` o `make all` — compila `libdsm.a`, `dsm_node` y `dsmctl`.
+- `make` o `make all` — compila los módulos, `dsm_node` y `dsmctl`.
+- `make check` — compila solo los módulos (sin `node_main` ni `ctl_main`) y confirma que no hay errores.
 - `make dsm_node` — solo el binario del nodo.
 - `make dsmctl` — solo la CLI.
-- `make test` — compila y ejecuta las pruebas.
-- `make run` — arranca dos nodos locales para la demostración.
 - `make clean` — elimina objetos y binarios.
 
-> **Nota.** Esta estructura es la definitiva para el prototipo 1. Si durante la implementación cambia, la sección 6.2 lo registra como un cambio respecto al E1.
+> **Nota.** `make test` y `make run` del diseño original no existen todavía: las pruebas unitarias llegan con el prototipo 2 y la demostración se ejecuta con `scripts/demo.sh`.
 
-**Ubicación durante el desarrollo.** Mientras el prototipo está en construcción, el código vive en `Entregable_2/prototipo1/` con esta misma distribución (`include/`, `src/`, `Makefile`). Al cerrar el entregable se traslada a la raíz del repositorio. La razón es simple: así el entregable queda autocontenido y no se mezcla con la documentación de los otros entregables.
+**Ubicación durante el desarrollo.** El código vive en `Entregable_2/prototipo1/`. Se mantiene ahí para que cada entregable quede autocontenido y no se mezcle con la documentación de los otros.
 
-**Estado actual del código.** Implementados los módulos de memoria, señales, coherencia MSI, sincronización y contadores (sección 7.1, 7.3 y 7.4). Pendientes los de configuración, red, protocolo y CLI (sección 7.2 y 7.6), que corresponden al otro integrante. El `Makefile` de esa carpeta compila los módulos terminados con `make check`; todavía no enlaza binarios.
+**Estado actual del código.** Los 14 archivos compilan y enlazan. La demostración de dos nodos se ejecutó y su salida está en `evidence/` (sección 10).
 
 ### 7.8 Convenciones de código
 
@@ -670,18 +689,16 @@ Los cuatro tamaños de la primera mitad están verificados con `_Static_assert` 
 Los tamaños se verifican en tiempo de compilación con `_Static_assert`, de modo que una discrepancia rompa el build en lugar de corromper el protocolo:
 
 ```c
-/* Ya presentes en el código */
+/* Presentes en el código y verificados en cada compilación */
 _Static_assert(sizeof(dsm_local_page_t) == 56,      "dsm_local_page_t debe medir 56 bytes");
 _Static_assert(sizeof(dsm_frame_t) == 40,           "dsm_frame_t debe medir 40 bytes");
 _Static_assert(sizeof(dsm_directory_entry_t) == 64, "dsm_directory_entry_t debe medir 64 bytes");
 _Static_assert(sizeof(dsm_stats_t) == 128,          "dsm_stats_t debe medir 128 bytes");
-
-/* Contrato para el módulo de red, todavía sin implementar */
-_Static_assert(sizeof(dsm_msg_header_t) == 64, "header must be 64 bytes");
-_Static_assert(sizeof(dsm_config_t) == 704,    "config must be 704 bytes");
+_Static_assert(sizeof(dsm_msg_header_t) == 64,      "dsm_msg_header_t debe medir 64 bytes");
+_Static_assert(sizeof(dsm_config_t) == 704,         "dsm_config_t debe medir 704 bytes");
 ```
 
-> **Pendiente de verificación.** Los cuatro primeros se comprueban al compilar en el laboratorio; hasta entonces solo se validó la sintaxis. Los dos últimos pertenecen a módulos que aún no existen.
+> **Verificado.** Los seis `_Static_assert` forman parte del código y pasaron en la compilación con GCC 13.2.1 y con clang; si un tamaño cambia, el build falla.
 
 ### 8.3 Diferencias con el diseño
 
@@ -707,18 +724,27 @@ _Static_assert(sizeof(dsm_config_t) == 704,    "config must be 704 bytes");
 
 ### 9.2 Compilación
 
-El `Makefile` compila `src/*.c` en `libdsm.a` y enlaza con ella los binarios `dsm_node` y `dsmctl`.
+El `Makefile` compila `src/*.c` a objetos en `build/` y enlaza dos binarios: `dsm_node` y `dsmctl`.
 
 ```bash
-make            # compila libdsm.a, dsm_node y dsmctl
+make            # compila los módulos, dsm_node y dsmctl
+make check      # solo los módulos, sin enlazar binarios
 make dsm_node   # solo el binario del nodo
 make dsmctl     # solo la CLI
-make test       # compila y ejecuta las pruebas
-make run        # arranca dos nodos locales
 make clean      # limpia objetos y binarios
 ```
 
-> **Estado.** El `Makefile` definitivo se integra cuando existan todos los módulos. Mientras tanto, `Entregable_2/prototipo1/Makefile` compila los cinco módulos ya escritos con `make check`, sin enlazar. La salida real de `make` se pega aquí después de la primera compilación en el laboratorio.
+La compilación se ejecutó con **GCC 13.2.1** sobre Linux (Alpine 3.20.3, musl 1.2.5, kernel 6.18 en WSL2), con `-std=c11 -Wall -Wextra -Wpedantic`. El resultado fue **0 errores y 0 advertencias**. Además, los 14 archivos se compilaron por separado con **clang 22.1.8 (Zig 0.17.1)** apuntando a `x86_64-linux-gnu` (glibc), también sin advertencias, y ambos binarios enlazaron; eso cubre el caso de que el laboratorio use glibc en vez de musl.
+
+```text
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/sync.c -o build/sync.o
+...
+==> Modulos compilan sin errores.
+cc ... -o dsm_node build/*.o -lpthread
+cc ... -o dsmctl   build/*.o -lpthread
+```
+
+> **Evidencia.** La salida completa de `make` está en `Entregable_2/prototipo1/evidence/01_make.log`. No se transcribe entera aquí para no repetir 17 líneas de comandos.
 
 ### 9.3 Configuración y puertos
 
@@ -733,28 +759,40 @@ make clean      # limpia objetos y binarios
 
 Fórmula: `puerto_base = 27300 + 4 × node_id`.
 
+En el prototipo 1 solo se usan `listen_port` y `seed_port`; los otros tres están reservados para el prototipo 2 y se validan como parte de la configuración. Los archivos son `config/dsm.conf` (nodo 0) y `config/dsm-node1.conf` (nodo 1). Ambos pasan la validación:
+
+```bash
+./dsm_node --config config/dsm.conf --check-config        # dsm.conf: OK
+./dsm_node --config config/dsm-node1.conf --check-config  # dsm.conf: OK
+```
+
 ### 9.4 Arranque de nodos
 
 ```bash
-# Nodo 0 (semilla)
-./build/dsm_node --config config/dsm.conf --id 0
+# Nodo 0 (home): crea el objeto y espera el writeback
+./dsm_node --config config/dsm.conf
 
-# Nodo 1
-./build/dsm_node --config config/dsm.conf --id 1
+# Nodo 1: lee, escribe y devuelve la página 0
+./dsm_node --config config/dsm-node1.conf
 
-# Consulta de estado
-./build/dsmctl status --node 0
+# Nodo 0 en modo servidor, sin demo (queda escuchando hasta Ctrl+C)
+./dsm_node --config config/dsm.conf --serve
 ```
 
-> Los binarios se generan en `build/` y `config/dsm.conf` es local (no se versiona); el repositorio incluye `dsm.conf.example`. Las opciones `--config` y `--id` son las definitivas.
+El identificador del nodo **no** se pasa por línea de comandos: viene del archivo de configuración (`node_id`). Un `--id` en la línea de comandos no existe y no se documenta como si existiera.
+
+> `dsmctl` todavía es un stub que imprime `dsmctl: not fully implemented`. No se usa en la demostración y no se presenta como funcional.
 
 ### 9.5 Ejecución de pruebas
 
 ```bash
-./scripts/demo.sh 2>&1 | tee evidence/demo.log
+sh scripts/demo.sh            # compila, arranca los dos nodos y muestra sus salidas
+sh scripts/capture_evidence.sh  # regenera evidence/ con la salida real
 ```
 
-> **Guion de la demostración.** El `scripts/demo.sh` lo escribe el integrante responsable de la red. La secuencia prevista es: arrancar el nodo 0, arrancar el nodo 1, ejecutar la aplicación de prueba que lee la página 0 desde el nodo 1, escribir desde el nodo 0 para provocar la invalidación y consultar el estado con `dsmctl`. El guion definitivo se documenta cuando el script exista.
+`scripts/demo.sh` arranca el nodo 0, espera un segundo, arranca el nodo 1, espera a que ambos terminen e imprime las dos salidas. El nodo 0 espera el writeback hasta 15 s; el nodo 1 espera 1.5 s antes del primer acceso para dar tiempo a que el home cree el objeto.
+
+> **Guion de la demostración.** Nodo 0 crea las 4 páginas y lee la página 0. Nodo 1 provoca un fallo de lectura (`I → S`), uno de escritura (`S → M`), relee sin fallo y devuelve la página con `WRITEBACK`. Nodo 0 detecta la versión nueva en el directorio y vuelve a leer la página, que ahora contiene el texto escrito por el nodo 1.
 
 ---
 
@@ -762,75 +800,89 @@ Fórmula: `puerto_base = 27300 + 4 × node_id`.
 
 ### 10.1 Escenarios
 
-Todas las pruebas se ejecutan sobre un objeto DSM de **4 páginas (16 KB)**. La página 0 es la que se comparte entre los dos nodos para demostrar la transferencia y la invalidación.
+Todas las pruebas se ejecutan sobre un objeto DSM de **4 páginas (16 KB)**. La página 0 es la que se comparte entre los dos nodos para demostrar la transferencia y el retorno.
 
 | # | Prueba | Objetivo | Cómo se verifica | Estado |
 |---:|---|---|---|---|
-| 1 | Compilación | El proyecto compila sin errores | `make` termina con código 0 | Por ejecutar |
-| 2 | Arranque de dos nodos | Ambos procesos inician | Dos `dsm_node` activos | Por ejecutar |
-| 3 | Apertura de puertos | Cada nodo escucha | `ss -ltnp` muestra 27300 y 27304 | Por ejecutar |
-| 4 | Registro con la semilla | El nodo 1 se une | Log `JOIN_RESPONSE` | Por ejecutar |
-| 5 | Heartbeat | Se detectan nodos vivos | Log de latidos cada 1 s | Por ejecutar |
-| 6 | Reserva de ventana | `mmap` exitoso | Log con dirección y tamaño | Por ejecutar |
-| 7 | Protección inicial | Páginas en `PROT_NONE` | Lectura provoca `SIGSEGV` | Por ejecutar |
-| 8 | Captura de `si_addr` | El handler identifica la página | Log del `page_id` calculado | Por ejecutar |
-| 9 | `PAGE_REQUEST` | Se solicita la página remota | Log del mensaje enviado | Por ejecutar |
-| 10 | `PAGE_DATA` | Se recibe el contenido | Log del mensaje recibido | Por ejecutar |
-| 11 | Reanudación del hilo | La lectura continúa | El programa imprime el valor correcto | Por ejecutar |
-| 12 | Transición `I → S` | Se obtiene copia compartida | Estado de página = `S` | Por ejecutar |
-| 13 | Invalidación `S → I` | La escritura remota invalida | Log `INVALIDATE` / `INVALIDATE_ACK` | Por ejecutar |
-| 14 | CLI de estado | Se consulta el nodo | Salida de `dsmctl status` | Por ejecutar |
+| 1 | Compilación | El proyecto compila sin errores ni advertencias | `make` termina con código 0 | Ejecutada |
+| 2 | Validación de configuración | Las dos configuraciones son válidas | `--check-config` imprime `OK` | Ejecutada |
+| 3 | Apertura del puerto | El nodo escucha | `netstat -ltn` muestra `127.0.0.1:27300` | Ejecutada |
+| 4 | Arranque de dos nodos | Ambos procesos inician y enlazan | Cada nodo imprime `nodo N listo` | Ejecutada |
+| 5 | Creación del objeto | El home crea 4 páginas residentes | Lectura de la página 0 en el nodo 0 | Ejecutada |
+| 6 | Fallo remoto de lectura | `I → S` con datos correctos | El nodo 1 imprime el texto creado por el nodo 0 | Ejecutada |
+| 7 | Fallo remoto de escritura | `S → M` | El nodo 1 escribe y relee su propio texto | Ejecutada |
+| 8 | Relectura local | Sin fallo ni tráfico | Tercer acceso del nodo 1 | Ejecutada |
+| 9 | Writeback | La página vuelve al home | El nodo 1 recibe `PAGE_WRITEBACK_ACK` | Ejecutada |
+| 10 | Propagación al home | El home ve la versión nueva | El nodo 0 imprime el texto del nodo 1 | Ejecutada |
+| 11 | Coherencia de contadores | Los números cuadran entre nodos | `page_faults = 2`, `remote_reads = 1`, `remote_writes = 1` | Ejecutada |
+| 12 | Cierre ordenado | No hay cuelgues ni *zombies* | `demo.sh` termina solo con código 0 | Ejecutada |
+| 13 | Reproducibilidad | El resultado no depende del azar | Dos ejecuciones consecutivas con la misma salida | Ejecutada |
 
-**Tabla 6.** Escenarios de prueba.
+**Tabla 6.** Escenarios de prueba ejecutados.
+
+Las pruebas que el diseño original contemplaba pero que **no** se ejecutaron porque la funcionalidad no existe en el prototipo 1 se listan en la tabla 6b, para que no se confundan con resultados.
+
+| Prueba | Motivo por el que no se ejecuta |
+|---|---|
+| `JOIN_RESPONSE` con la semilla | El registro de nodos es del prototipo 2 |
+| Heartbeat cada 1 s | No implementado |
+| Invalidación `S → I` de un tercer nodo | Solo hay dos nodos; hace falta `PAGE_FORWARD` |
+| `dsmctl status` | `dsmctl` es un stub |
+| Expulsión de páginas | Fuera del alcance del prototipo 1 |
+
+**Tabla 6b.** Pruebas no ejecutadas y su motivo.
 
 ### 10.2 Resultados
 
 | # | Resultado esperado | Resultado obtenido | ¿Cumple? | Evidencia |
 |---:|---|---|---|---|
-| 1 | `make` sin errores | Pendiente | — | `evidence/01_make.log` |
-| 2 | Dos nodos activos | Pendiente | — | `evidence/02_nodo0.log` |
-| 3 | Puertos abiertos | Pendiente | — | `evidence/03_puertos.txt` |
-| 4 | Unión al clúster | Pendiente | — | `evidence/04_join.log` |
-| 5 | Latidos periódicos | Pendiente | — | `evidence/05_heartbeat.log` |
-| 6 | Ventana reservada | Pendiente | — | `evidence/06_mmap.log` |
-| 7 | `SIGSEGV` capturado | Pendiente | — | `evidence/07_fault.log` |
-| 8 | `si_addr` correcto | Pendiente | — | `evidence/08_siaddr.log` |
-| 9 | `PAGE_REQUEST` enviado | Pendiente | — | `evidence/09_request.log` |
-| 10 | `PAGE_DATA` recibido | Pendiente | — | `evidence/10_data.log` |
-| 11 | Lectura correcta | Pendiente | — | `evidence/11_lectura.log` |
-| 12 | Página en `S` | Pendiente | — | `evidence/12_msi.log` |
-| 13 | Invalidación correcta | Pendiente | — | `evidence/13_invalidate.log` |
-| 14 | CLI responde | Pendiente | — | `evidence/14_cli.txt` |
+| 1 | `make` sin errores ni advertencias | 0 errores, 0 advertencias; dos binarios enlazados | Sí | `evidence/01_make.log` |
+| 2 | Configuraciones válidas | `dsm.conf: OK` para los dos archivos | Sí | `evidence/02_config.log` |
+| 3 | Puerto 27300 en escucha | `127.0.0.1:27300 LISTEN` | Sí | `evidence/04_ports.txt` |
+| 4 | Dos nodos activos | Nodo 0 en 27300 y nodo 1 en 27304 | Sí | `evidence/03_demo.log` |
+| 5 | Objeto de 4 páginas | `objeto DSM: pagina 0 creada por el nodo 0` | Sí | `evidence/03_demo.log` |
+| 6 | Lectura remota correcta | Nodo 1 lee el texto del nodo 0 | Sí | `evidence/03_demo.log` |
+| 7 | Escritura exclusiva | Nodo 1 escribe y relee su texto | Sí | `evidence/03_demo.log` |
+| 8 | Relectura sin fallo | Tercer acceso sin mensaje nuevo | Sí | `evidence/03_demo.log` |
+| 9 | Writeback confirmado | `writeback OK` | Sí | `evidence/03_demo.log` |
+| 10 | El home ve el cambio | Nodo 0 imprime el texto del nodo 1 | Sí | `evidence/03_demo.log` |
+| 11 | Contadores coherentes | Nodo 1: 2 fallos, 1 lectura y 1 escritura remotas; 3 mensajes enviados y 3 recibidos en cada nodo | Sí | `evidence/03_demo.log` |
+| 12 | Cierre ordenado | Ambos procesos terminan y el script retorna | Sí | `evidence/03_demo.log` |
+| 13 | Reproducibilidad | Igual salida salvo el `pid` | Sí | dos ejecuciones registradas |
 
 **Tabla 7.** Resultados obtenidos.
+
+> **Sobre `aciertos locales = 0`.** El contador mide aciertos que resuelve el runtime, es decir, fallos que llegan al manejador y se contestan sin red. La relectura del nodo 1 no genera fallo (la página ya está residente y con permisos), así que el runtime no la ve y no la cuenta. No es un error de la prueba: es el límite de lo que un DSM en espacio de usuario puede observar sin instrumentar cada acceso.
 
 ### 10.3 Evidencia
 
 | Evidencia | Archivo | Estado |
 |---|---|---|
-| Salida de `make` | `evidence/01_make.log` | Pendiente |
-| Arranque del nodo 0 | `evidence/02_nodo0.log` | Pendiente |
-| Arranque del nodo 1 | `evidence/03_nodo1.log` | Pendiente |
-| Puertos en escucha | `evidence/04_puertos.txt` | Pendiente |
-| Logs de heartbeat | `evidence/05_heartbeat.log` | Pendiente |
-| `PAGE_REQUEST` / `PAGE_DATA` | `evidence/06_paginas.log` | Pendiente |
-| Salida de la CLI | `evidence/07_cli.txt` | Pendiente |
-| Captura de la terminal | `evidence/08_captura.png` | Pendiente |
-| `git log` con ambos autores | `evidence/09_gitlog.txt` | Pendiente |
+| Salida completa de `make` | `evidence/01_make.log` | Versionada |
+| Validación de las dos configuraciones | `evidence/02_config.log` | Versionada |
+| Salida de los dos nodos | `evidence/03_demo.log` | Versionada |
+| Puertos en escucha | `evidence/04_ports.txt` | Versionada |
+| Script que regenera la evidencia | `scripts/capture_evidence.sh` | Versionado |
 
-> **Pendiente.** Las capturas y los fragmentos de log se insertan después de la ejecución en el laboratorio. La carpeta `evidence/` no se versiona salvo los archivos `.log`, que sí quedan en el repositorio como prueba.
+> **Reproducible.** `sh scripts/capture_evidence.sh` vuelve a generar los cuatro archivos desde cero. Los logs se transcriben tal como salen; lo único que cambia entre corridas es el `pid` del nodo 1 y el tiempo activo.
 
 ### 10.4 Problemas encontrados
 
-Estos problemas se detectaron en la revisión del código, antes de la primera compilación. Se documentan porque explican por qué el diseño actual difiere del E1.
+Estos problemas aparecieron al integrar los módulos y se corrigieron antes de la ejecución. Se documentan porque explican decisiones del código actual.
 
 | # | Problema | Síntoma | Causa | Solución |
 |---:|---|---|---|---|
-| 1 | Copia de página con permisos abiertos | Otro hilo podía leer una página a medio copiar | Para escribir había que poner la ventana en `RW`, y eso la hacía visible antes de tiempo | Doble mapeo del `memfd`: la ventana nunca sale de `PROT_NONE` durante la copia |
-| 2 | `pthread_sigmask` dentro del manejador | Llamada no segura para señales | Se usó la variante de Pthreads por inercia | `sigprocmask`, que sí está en la lista de funciones seguras |
-| 3 | Una sola pila alternativa para todo el proceso | Dos fallos simultáneos comparten pila y corrompen el proceso | `sigaltstack` es un atributo por hilo, no por proceso | Cada hilo registrado reserva su pila y la libera con un destructor de `pthread_key` |
-| 4 | Comprobación de orden de locks desactivada | Diagnósticos falsos: la pila quedaba desbalanceada | `check_order()` retornaba antes de apilar la clase | La pila se actualiza siempre; solo la comprobación es condicional |
-| 5 | `OWNERSHIP_DENY` enviado como `DSM_MSG_ERROR` | El cliente no distinguía una negación de protocolo de un error de transporte | Se reutilizó el ayudante de errores | Se separó `send_status()` y se agregó `send_deny()` con el tipo correcto |
+| 1 | El home respondía por un socket nuevo | El cliente esperaba la respuesta en la conexión del RPC y recibía un `EOF` | `dsm_net_send` abría siempre una conexión hacia el destino | El hilo de escucha publica el descriptor del RPC en un `_Thread_local` y la respuesta sale por ahí |
+| 2 | `dsm_attach` no registraba el hilo | El primer fallo de página mataba el proceso | Era un stub que retornaba `DSM_OK` | Llama a `dsm_fault_attach_thread()` sobre el contexto del runtime |
+| 3 | `dsm_create` no creaba nada | La ventana seguía en `PROT_NONE` | Stub | Crea las 4 páginas residentes, en `M`, sucias y con `mprotect` de escritura |
+| 4 | Desbordamiento de pila en el parser | El proceso moría al leer la configuración | `strcpy` de una línea de 1024 B a un buffer de 128 B | Copia acotada con `memcpy` y `snprintf` |
+| 5 | `dsm_net_stop` se colgaba | El nodo no terminaba | `accept()` no se despierta con `close()` | `shutdown()` antes del `join` y `close()` después |
+| 6 | Carrera en el indicador de ejecución | El hilo de escucha podía no ver la parada | `int` sin atomicidad | `_Atomic int` con `memory_order_acquire/release` |
+| 7 | El home se pedía una página a sí mismo | Interbloqueo al reabrir una página ya cedida | No había guarda para `node_id == home_node` | Se devuelve `DSM_ERR_NOENT`; el reenvío llega en el prototipo 2 |
+| 8 | El directorio no registraba al *sharer* tras el writeback | El home creía tener la página en exclusiva | Faltaba actualizar el directorio | `dir_mark_sharer()` después de publicar la copia |
+| 9 | Los contadores de red quedaban en cero | El reporte no mostraba tráfico | La red no tenía puntero a `dsm_stats_t` | `dsm_net_set_stats()` y conteo en cada envío y recepción |
+
+**Tabla 8.** Problemas de integración corregidos.
 
 ---
 
@@ -839,17 +891,20 @@ Estos problemas se detectaron en la revisión del código, antes de la primera c
 | # | Limitación | Impacto | Mitigación actual |
 |---:|---|---|---|
 | 1 | Solo dos nodos | No se valida la escala | Se prueba en E3 |
-| 2 | Sin expulsión de páginas | El pool no se recicla | Se implementa en E3 |
-| 3 | Sin aplicaciones de prueba | No hay carga real | Se implementan en E3 |
-| 4 | Sin métricas de rendimiento | No hay *speedup* | Se miden en E3 |
-| 5 | Sin tolerancia a fallos de nodo | Un nodo caído bloquea páginas | Fuera del alcance base |
-| 6 | Sin invalidación de terceros | El home niega la propiedad si hay otro *sharer* | Con dos nodos no ocurre; se implementa en E3 |
-| 7 | Sin expulsión ni reutilización de marcos | Al agotar los 256 marcos, la página no se puede materializar | Se implementa en E3 con LRU aproximada |
-| 8 | Compilación no verificada al cierre de esta versión | El código está escrito y revisado, pero no compilado | Se compila en el laboratorio antes de la entrega |
+| 2 | Un solo objeto de 4 páginas y home fijo en el nodo 0 | No hay varios objetos ni home distribuido | Se generaliza en E3 |
+| 3 | Sin expulsión de páginas | Al agotar los 256 marcos no se puede materializar otra página | LRU aproximada en E3 |
+| 4 | Sin aplicaciones de carga ni métricas de rendimiento | No hay *speedup* que reportar | Se miden en E3 |
+| 5 | Sin tolerancia a fallos de nodo | Un nodo caído deja páginas inaccesibles | Fuera del alcance base |
+| 6 | Sin invalidación de terceros ni `PAGE_FORWARD` | El home no puede recuperar una página que ya cedió; devuelve `DSM_ERR_NOENT` | Con dos nodos no se da; se implementa en E3 |
+| 7 | `aciertos locales` solo cuenta fallos resueltos por el runtime | Un acceso que no falla no se contabiliza | Se documenta; instrumentar cada acceso exigiría trampas que el prototipo no tiene |
+| 8 | `dsmctl` es un stub | No hay consulta de estado por CLI | Se implementa en E3 |
+| 9 | Una conexión TCP por RPC, sin persistencia ni *checksum* | Más `connect()` de los necesarios; sin detección de corrupción | Se optimiza en E3 |
+| 10 | `control_port`, `heartbeat_port` y `web_port` están reservados pero sin servicio | Solo `listen_port` se abre | Se usan en E3 y en el entregable final |
+| 11 | Validado en WSL2 (Alpine/musl con GCC y glibc con clang) | Falta la validación en las máquinas del laboratorio | Se repite la compilación y la demo allí antes de la entrega |
 
-**Tabla 8.** Limitaciones conocidas.
+**Tabla 9.** Limitaciones conocidas.
 
-> **Nota.** Las limitaciones 1 a 7 son de alcance y están asumidas desde el diseño. La 8 es temporal: desaparece en cuanto se ejecute `make check` en Linux.
+> **Nota.** Las limitaciones 1 a 10 son de alcance y están asumidas desde el diseño. La 11 es de entorno: el código compila sin advertencias en musl y en glibc, pero la ejecución documentada se hizo en WSL2, no en el laboratorio.
 
 ---
 
@@ -868,21 +923,23 @@ Estos problemas se detectaron en la revisión del código, antes de la primera c
 | 9 | Validación en máquinas del laboratorio | Media | E3 / final |
 | 10 | Extras 1 y 2 | Baja | Final |
 
-**Tabla 9.** Trabajo pendiente para el prototipo 2.
+**Tabla 10.** Trabajo pendiente para el prototipo 2.
 
 ---
 
 ## 13. Conclusiones
 
-> **Versión preliminar.** Estas conclusiones cubren el diseño y el código revisado. Los resultados experimentales se agregan después de ejecutar el prototipo en el laboratorio; hasta entonces no se afirma ningún comportamiento observado.
+> **Alcance de estas conclusiones.** Cubren el diseño, la implementación y la ejecución del prototipo 1 en WSL2. Los números citados salen de `evidence/03_demo.log`; no hay resultados estimados.
 
 **Sobre la viabilidad del mecanismo.** La combinación de `mmap(PROT_NONE)`, un manejador de `SIGSEGV` con `SA_SIGINFO` y `mprotect` permite materializar páginas bajo demanda sin que la aplicación cambie una línea. El costo está en que el manejador debe ser mínimo: cualquier operación que no sea segura para señales convierte un fallo de página en un interbloqueo.
 
+**Sobre lo observado.** El nodo 1 leyó una página que nunca había existido en su espacio de direcciones, la escribió y la devolvió. El nodo 0, que la había creado, vio el texto del nodo 1 después del writeback. En el camino hubo exactamente dos fallos de página (`page_faults = 2`), una lectura remota y una escritura remota, y tres mensajes en cada sentido, con 4 288 B enviados por el cliente y 8 384 B enviados por el home. Esos números cuadran con el protocolo: el home manda datos en `PAGE_DATA` y `OWNERSHIP_GRANT` (dos mensajes de 4 160 B) más un `ACK` de 64 B; el cliente manda dos peticiones de 64 B y un `WRITEBACK` de 4 160 B.
+
 **Sobre `mmap`, `mprotect` y señales.** Tres lecciones concretas. Primera: no se puede escribir sobre una página en `PROT_NONE`, y abrirla antes de copiar expone datos a medias; la solución fue mapear la misma memoria dos veces. Segunda: `sigaltstack` es por hilo, no por proceso, así que cada hilo que toca la ventana necesita la suya. Tercera: `sem_wait` no es segura dentro de un manejador; el hilo debe dormirse con `sigsuspend` y el resolutor despertarlo con `pthread_kill`.
 
-**Sobre las desviaciones.** El E1 describía el *qué*; la implementación obligó a decidir el *cómo*. El doble mapeo, la cola de fallos sin locks y el directorio local en el nodo home no contradicen el diseño: lo hacen ejecutable con dos nodos y cuatro páginas. Cada una quedó registrada en las secciones 5.4 y 6.2 con su motivo.
+**Sobre la integración.** El riesgo dominante no fue la red sino la frontera entre módulos escritos por personas distintas. Los nueve problemas de la tabla 8 aparecieron al unir piezas que, por separado, compilaban. El más costoso fue el enrutamiento de la respuesta: la coherencia "enviaba" correctamente, pero por una conexión que el cliente ya no estaba leyendo. Un contrato explícito entre coherencia y red —`dsm_coherence_ops_t`— hizo visible ese error en cuanto se ejecutó la demo.
 
-**Sobre los riesgos.** El riesgo dominante no era la red sino la concurrencia: interbloqueo por señal y carrera en la copia. Ambos se atacaron en el diseño, no con parches posteriores, y la jerarquía de locks se verifica en ejecución para que un error de orden aparezca en la primera prueba.
+**Sobre las desviaciones.** El E1 describía el *qué*; la implementación obligó a decidir el *cómo*. El doble mapeo, la cola de fallos sin locks y el directorio local en el nodo home no contradicen el diseño: lo hacen ejecutable con dos nodos y cuatro páginas. Cada una quedó registrada en las secciones 5.4 y 6.2 con su motivo.
 
 **Qué queda.** El Prototipo 2 debe añadir expulsión con LRU, varios objetos, aplicaciones de carga y métricas. La base actual está preparada: los marcos y la residencia ya distinguen `TRAYENDO`, `RESIDENTE` y `EXPULSANDO`, aunque la expulsión todavía no se ejecute.
 
@@ -905,39 +962,104 @@ Estos problemas se detectaron en la revisión del código, antes de la primera c
 
 ### Anexo A — Logs de ejecución
 
-> **Pendiente.** Se pegan aquí los fragmentos representativos de `evidence/`: arranque de los dos nodos, `PAGE_REQUEST` / `PAGE_DATA`, `INVALIDATE` / `INVALIDATE_ACK` y la salida de `dsmctl status`. Se transcriben tal como salgan, sin editarlos.
+Salida literal de `sh scripts/demo.sh` (archivo `evidence/03_demo.log`). El `pid` del nodo 1 cambia en cada corrida; el resto es estable.
 
 ```text
-Pendiente de la ejecución en el laboratorio.
+==> Modulos compilan sin errores.
+===== nodo 0 (home) =====
+nodo 0 listo (escucha en el puerto 27300)
+=== demo DSM: nodo 0 (home 0) ===
+nodo 0: lee pagina 0 -> "objeto DSM: pagina 0 creada por el nodo 0"
+nodo 0: esperando el writeback del nodo 1...
+nodo 0: tras el writeback, pagina 0 -> "pagina 0 escrita por el nodo 1 (pid 76)"
+nodo 0: contadores
+fallos de pagina      : 0
+aciertos locales      : 0
+lecturas remotas      : 1
+escrituras remotas    : 0
+invalidaciones enviadas : 0
+invalidaciones recibidas: 0
+expulsiones           : 0
+bytes enviados        : 8384
+bytes recibidos       : 4288
+mensajes enviados     : 3
+mensajes recibidos    : 3
+tiempos agotados      : 0
+errores               : 0
+tiempo activo (ms)    : 2607
+paginas residentes    : 4
+marcos libres         : 252
+
+===== nodo 1 (cliente) =====
+nodo 1 listo (escucha en el puerto 27304)
+=== demo DSM: nodo 1 (home 0) ===
+nodo 1: lee pagina 0 (fallo remoto de lectura)...
+nodo 1: contenido -> "objeto DSM: pagina 0 creada por el nodo 0"
+nodo 1: escribe pagina 0 (fallo remoto de escritura)...
+nodo 1: contenido nuevo -> "pagina 0 escrita por el nodo 1 (pid 76)"
+nodo 1: relee pagina 0 (residente, sin fallo) -> "pagina 0 escrita por el nodo 1 (pid 76)"
+nodo 1: devuelve la pagina 0 al home (writeback)...
+nodo 1: writeback OK
+nodo 1: contadores
+fallos de pagina      : 2
+aciertos locales      : 0
+lecturas remotas      : 1
+escrituras remotas    : 1
+invalidaciones enviadas : 0
+invalidaciones recibidas: 0
+expulsiones           : 0
+bytes enviados        : 4288
+bytes recibidos       : 8384
+mensajes enviados     : 3
+mensajes recibidos    : 3
+tiempos agotados      : 0
+errores               : 0
+tiempo activo (ms)    : 1510
+paginas residentes    : 1
+marcos libres         : 255
+```
+
+Comprobación del puerto (`evidence/04_ports.txt`):
+
+```text
+# netstat -ltn (solo puertos 27300-27307)
+tcp        0      0 127.0.0.1:27300         0.0.0.0:*               LISTEN
+```
+
+Validación de configuración (`evidence/02_config.log`):
+
+```text
+dsm.conf: OK
+dsm.conf: OK
 ```
 
 ### Anexo B — Capturas
 
-> **Pendiente.** Capturas de la terminal con los dos nodos activos y, si existe, del panel de estado. Se numeran a partir de la figura 5.
+No se incluyen capturas de pantalla: la evidencia es textual y se regenera con `scripts/capture_evidence.sh`, lo que la hace verificable sin depender de una imagen. Si el curso exige capturas, se toman de la misma corrida y se numeran a partir de la figura 5.
 
 ### Anexo C — Tablas de resultados
 
-> **Pendiente.** Tabla de tiempos por operación (fallo de página local, fallo remoto, invalidación) medida con `dsm_stats` y `dsm_now_ms()`. Solo se incluye si la medición se ejecutó.
+No se midieron tiempos por operación. El prototipo 1 reporta contadores (fallos, lecturas y escrituras remotas, mensajes y bytes) y el tiempo activo del nodo, pero no instrumenta la duración de cada fallo ni de cada mensaje. Esa medición se hace en el prototipo 2, cuando exista una carga de trabajo con la que comparar.
 
 ### Anexo D — Checklist de entrega
 
 - [x] Documento Markdown del prototipo 1.
 - [x] Arquitectura actualizada.
 - [x] Cambios respecto al E1.
-- [ ] Código fuente — parcial: módulos de memoria, señales, coherencia, sincronización y contadores.
+- [x] Código fuente — 14 archivos, todos los módulos del prototipo.
 - [x] Guía de código (`02_Entregable_2_Guia_Codigo.md`).
-- [x] `Makefile` provisional (`make check`).
+- [x] `Makefile` que compila y enlaza los dos binarios.
 - [x] `README`.
-- [x] Configuración de ejemplo.
-- [ ] Compilación exitosa.
-- [ ] Arranque de 2 nodos.
-- [ ] Transferencia de página.
-- [ ] MSI básico — código escrito, sin ejecutar.
-- [ ] Evidencia de ejecución.
+- [x] Configuración de los dos nodos.
+- [x] Compilación exitosa — 0 errores, 0 advertencias.
+- [x] Arranque de 2 nodos.
+- [x] Transferencia de página — lectura remota y writeback.
+- [x] MSI básico — `I → S` y `S → M` ejecutados.
+- [x] Evidencia de ejecución — `evidence/`.
 - [x] Limitaciones.
 - [x] Trabajo pendiente.
 - [x] Repositorio Git.
-- [ ] Commits de ambos integrantes.
+- [x] Commits de ambos integrantes.
 
 > Este anexo es de control interno: **se elimina antes de la entrega**.
 
@@ -952,15 +1074,15 @@ Pendiente de la ejecución en el laboratorio.
 | 5.5 | Completa para los módulos actuales | Decisiones de red y configuración |
 | 6.2 | Parcial | Cambios de red y configuración |
 | 6.4 | Parcial | API y protocolo |
-| 7.1–7.6 | Parcial | 7.2 (red) y 7.5 (API pública) |
+| 7.1–7.6 | Completa | — |
 | 7.7 | Completa | — |
 | 7.9 | Completa | — |
 | 8 | Completa para los módulos actuales | Estructuras de red y configuración |
-| 9 | Pendiente de ejecución | Salidas reales de `make` y de los nodos |
-| 10 | Pendiente de ejecución | Resultados y evidencia |
+| 9 | Completa | — |
+| 10 | Completa | — |
 | 11 | Completa | — |
 | 12 | Completa | — |
-| 13 | Preliminar | Agregar resultados experimentales |
-| 15 | Pendiente de ejecución | Logs y capturas |
+| 13 | Completa | — |
+| 15 | Completa | — |
 
 > Borrar este apéndice antes de la entrega.

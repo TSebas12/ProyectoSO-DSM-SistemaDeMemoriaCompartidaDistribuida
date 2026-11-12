@@ -28,6 +28,7 @@ dsm_status_t dsm_runtime_init(dsm_runtime_t *rt, const dsm_config_t *cfg) {
     if (!rt || !cfg) return DSM_ERR_INVAL;
     memset(rt, 0, sizeof(*rt));
     rt->cfg = *cfg;
+    rt->start_ms = dsm_now_ms();
     /* memory params */
     dsm_memory_params_t mp; dsm_memory_params_default(&mp);
     mp.window_size = cfg->window_size;
@@ -35,8 +36,8 @@ dsm_status_t dsm_runtime_init(dsm_runtime_t *rt, const dsm_config_t *cfg) {
     mp.frame_count = (uint32_t)(cfg->node_memory / cfg->page_size);
     mp.page_base_id = 0;
     if (dsm_memory_init(&rt->mem, &mp) != DSM_OK) return DSM_ERR_MMAP;
-    /* stats */
-    /* stats is embedded; assume init zero */
+    /* Contadores atómicos: no basta con que calloc los deje en cero. */
+    dsm_stats_init(&rt->stats);
     /* fault map */
     dsm_fault_map_t fm;
     fm.window_base = dsm_memory_window_base(&rt->mem);
@@ -50,6 +51,8 @@ dsm_status_t dsm_runtime_init(dsm_runtime_t *rt, const dsm_config_t *cfg) {
     /* net */
     rt->net = dsm_net_create(cfg, &rt->co);
     if (!rt->net) return DSM_ERR_NOMEM;
+    /* La red reporta mensajes y bytes en los contadores del nodo. */
+    dsm_net_set_stats(rt->net, &rt->stats);
     dsm_coherence_params_t cp; memset(&cp,0,sizeof(cp));
     cp.node_id = cfg->node_id;
     cp.home_node = 0;
@@ -58,8 +61,10 @@ dsm_status_t dsm_runtime_init(dsm_runtime_t *rt, const dsm_config_t *cfg) {
     dsm_coherence_ops_t ops = dsm_net_ops(rt->net);
     if (dsm_coherence_init(&rt->co, &rt->mem, &rt->stats, &cp, &ops) != DSM_OK) return DSM_ERR_STATE;
     if (dsm_net_start(rt->net) != DSM_OK) return DSM_ERR_NET;
+    if (pthread_create(&rt->resolver_thread, NULL, dsm_resolver_loop, rt) != 0) {
+        return DSM_ERR_STATE;
+    }
     rt->running = 1;
-    pthread_create(&rt->resolver_thread, NULL, dsm_resolver_loop, rt);
     return DSM_OK;
 }
 

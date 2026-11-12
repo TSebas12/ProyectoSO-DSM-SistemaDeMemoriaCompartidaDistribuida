@@ -39,6 +39,7 @@ logs/
 *.log
 # La evidencia de los entregables sí se versiona (ver §10.3 del E2).
 !evidence/**/*.log
+!**/evidence/**/*.log
 results/*
 !results/README.md
 core

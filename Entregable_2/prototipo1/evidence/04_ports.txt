@@ -1,0 +1,2 @@
+# netstat -ltn (solo puertos 27300-27307)
+tcp        0      0 127.0.0.1:27300         0.0.0.0:*               LISTEN      

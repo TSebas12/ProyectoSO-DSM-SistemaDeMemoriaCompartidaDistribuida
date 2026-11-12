@@ -1,0 +1,53 @@
+==> Modulos compilan sin errores.
+===== nodo 0 (home) =====
+nodo 0 listo (escucha en el puerto 27300)
+=== demo DSM: nodo 0 (home 0) ===
+nodo 0: lee pagina 0 -> "objeto DSM: pagina 0 creada por el nodo 0"
+nodo 0: esperando el writeback del nodo 1...
+nodo 0: tras el writeback, pagina 0 -> "pagina 0 escrita por el nodo 1 (pid 76)"
+nodo 0: contadores
+fallos de pagina      : 0
+aciertos locales      : 0
+lecturas remotas      : 1
+escrituras remotas    : 0
+invalidaciones enviadas : 0
+invalidaciones recibidas: 0
+expulsiones           : 0
+bytes enviados        : 8384
+bytes recibidos       : 4288
+mensajes enviados     : 3
+mensajes recibidos    : 3
+tiempos agotados      : 0
+errores               : 0
+tiempo activo (ms)    : 2607
+paginas residentes    : 4
+marcos libres         : 252
+
+===== nodo 1 (cliente) =====
+nodo 1 listo (escucha en el puerto 27304)
+=== demo DSM: nodo 1 (home 0) ===
+nodo 1: lee pagina 0 (fallo remoto de lectura)...
+nodo 1: contenido -> "objeto DSM: pagina 0 creada por el nodo 0"
+nodo 1: escribe pagina 0 (fallo remoto de escritura)...
+nodo 1: contenido nuevo -> "pagina 0 escrita por el nodo 1 (pid 76)"
+nodo 1: relee pagina 0 (residente, sin fallo) -> "pagina 0 escrita por el nodo 1 (pid 76)"
+nodo 1: devuelve la pagina 0 al home (writeback)...
+nodo 1: writeback OK
+nodo 1: contadores
+fallos de pagina      : 2
+aciertos locales      : 0
+lecturas remotas      : 1
+escrituras remotas    : 1
+invalidaciones enviadas : 0
+invalidaciones recibidas: 0
+expulsiones           : 0
+bytes enviados        : 4288
+bytes recibidos       : 8384
+mensajes enviados     : 3
+mensajes recibidos    : 3
+tiempos agotados      : 0
+errores               : 0
+tiempo activo (ms)    : 1510
+paginas residentes    : 1
+marcos libres         : 255
+

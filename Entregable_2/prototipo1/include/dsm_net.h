@@ -7,6 +7,7 @@
 
 #include "dsm_config.h"
 #include "dsm_coherence.h"
+#include "dsm_stats.h"
 #include "dsm_types.h"
 
 typedef struct dsm_net dsm_net_t;
@@ -15,6 +16,13 @@ typedef struct dsm_net dsm_net_t;
 int dsm_net_read_full(int fd, void *buf, size_t n);
 
 dsm_net_t *dsm_net_create(const dsm_config_t *cfg, dsm_coherence_t *co);
+
+/*
+ * Engancha los contadores del nodo. La red los usa para reportar mensajes y
+ * bytes; sin esto, esas filas del reporte quedan siempre en cero.
+ */
+void dsm_net_set_stats(dsm_net_t *net, dsm_stats_t *stats);
+
 void dsm_net_destroy(dsm_net_t *net);
 dsm_status_t dsm_net_start(dsm_net_t *net);
 void dsm_net_stop(dsm_net_t *net);

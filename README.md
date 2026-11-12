@@ -2,7 +2,7 @@
 
 > Diseño de un sistema DSM con paginación bajo demanda y coherencia MSI sobre Linux, escrito en C11.
 
-**Estado:** documentación de diseño completada · implementación en curso
+**Estado:** documentación de diseño completada · prototipo 1 compilando y ejecutándose en pruebas
 **Curso:** IC-6600 Principios de Sistemas Operativos
 **Institución:** Instituto Tecnológico de Costa Rica — Escuela de Ingeniería en Computación
 
@@ -68,7 +68,7 @@ flowchart LR
 | Entregable | Fecha | Estado |
 |---|---|---|
 | E1 — Documento de diseño | 6 nov 2026 | ✅ Completado |
-| E2 — Prototipo 1 y arquitectura actualizada | 13 nov 2026 | ⏳ Pendiente |
+| E2 — Prototipo 1 y arquitectura actualizada | 13 nov 2026 | 🚧 En progreso — prototipo funcional y evidencia registrada |
 | E3 — Prototipo 2 y arquitectura actualizada | 20 nov 2026 | ⏳ Pendiente |
 | Entrega final — Demo en vivo | 27 nov 2026 | ⏳ Pendiente |
 
@@ -80,21 +80,27 @@ ProyectoSO/
 ├── 00_Proyecto_DSM_General.md        Documento maestro del proyecto
 ├── Entregable_1/
 │   ├── INSTRUCCIONES.md
-│   └── 01_Entregable_1_Diseno.md     Diseño formal, API, protocolo y estructuras
+│   ├── 01_Entregable_1_Diseno.md     Diseño formal, API, protocolo y estructuras
+│   └── 01_Entregable_1_Diseno.pdf    Versión pública del entregable
 ├── Entregable_2/
-│   └── INSTRUCCIONES.md
+│   ├── INSTRUCCIONES.md
+│   ├── 02_Entregable_2_Prototipo_1.md    Documento del prototipo 1
+│   ├── 02_Entregable_2_Guia_Codigo.md    Guía módulo por módulo
+│   └── prototipo1/                       Código, configuración, scripts y evidencia
 ├── Entregable_3/
 │   └── INSTRUCCIONES.md
 └── Entrega_Final/
     └── INSTRUCCIONES.md
 ```
 
-Cuando comience la implementación se agregarán `src/`, `include/`, `config/`, `apps/`, `tests/` y `scripts/`.
+El código del prototipo vive en `Entregable_2/prototipo1/` con su propio `Makefile`, sus dos archivos de configuración y la carpeta `evidence/` con los logs de la corrida.
 
 ## Documentación
 
 - [Documento maestro del proyecto](00_Proyecto_DSM_General.md)
 - [Entregable 1 — Documento de diseño](Entregable_1/01_Entregable_1_Diseno.md)
+- [Entregable 2 — Prototipo 1](Entregable_2/02_Entregable_2_Prototipo_1.md)
+- [Entregable 2 — Guía del código](Entregable_2/02_Entregable_2_Guia_Codigo.md)
 - [Instrucciones del Entregable 1](Entregable_1/INSTRUCCIONES.md)
 - [Instrucciones del Entregable 2](Entregable_2/INSTRUCCIONES.md)
 - [Instrucciones del Entregable 3](Entregable_3/INSTRUCCIONES.md)

@@ -1,0 +1,17 @@
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/sync.c -o build/sync.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/stats.c -o build/stats.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/memory.c -o build/memory.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/fault.c -o build/fault.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/coherence.c -o build/coherence.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/config.c -o build/config.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/protocol.c -o build/protocol.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/log.c -o build/log.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/net.c -o build/net.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/dsm_api.c -o build/dsm_api.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/runtime.c -o build/runtime.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/demo_page.c -o build/demo_page.o
+==> Modulos compilan sin errores.
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/node_main.c -o build/node_main.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g  -o dsm_node build/sync.o build/stats.o build/memory.o build/fault.o build/coherence.o build/config.o build/protocol.o build/log.o build/net.o build/dsm_api.o build/runtime.o build/demo_page.o build/node_main.o -lpthread
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g -Iinclude -c src/ctl_main.c -o build/ctl_main.o
+cc -std=c11 -D_GNU_SOURCE -Wall -Wextra -Wpedantic -O2 -g  -o dsmctl build/sync.o build/stats.o build/memory.o build/fault.o build/coherence.o build/config.o build/protocol.o build/log.o build/net.o build/dsm_api.o build/runtime.o build/demo_page.o build/ctl_main.o -lpthread
