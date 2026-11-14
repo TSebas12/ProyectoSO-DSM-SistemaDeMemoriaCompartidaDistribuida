@@ -11,6 +11,8 @@
 # La copia con carné, profesor e institución se conserva localmente;
 # al repositorio va la versión pública (01_Entregable_1_Diseno.pdf).
 Entregable_1/SO.2026 - Entregable 1 Proyecto - *.pdf
+Entregable_2/SO.2026 - Entregable 2 Proyecto - *.pdf
+Entregable_3/SO.2026 - Entregable 3 Proyecto - *.pdf
 
 # --- Configuración local ------------------------------------
 # dsm.conf puede contener IPs y rutas de cada máquina.
