@@ -117,7 +117,7 @@ static int format_nodes(dsm_runtime_t *rt, char *out, size_t len)
         }
         n = snprintf(out + used, len - used, "%-5u %-16s %-6u %-6u %s\n",
                      p->node_id, p->host, (unsigned)p->port,
-                     (unsigned)(p->port + 2u), estado);
+                     (unsigned)(p->port + 1u), estado);
         if (n < 0 || (size_t)n >= len - used) {
             return -1;
         }

@@ -13,7 +13,7 @@
 #   ./lab.sh counter          incrementos concurrentes (2 nodos)
 #   ./lab.sh bench            latencias local/remota (2 nodos)
 #   ./lab.sh evict            presion de memoria (2 nodos)
-#   ./lab.sh stress           matrices 192x192 + counter 2000
+#   ./lab.sh stress           matrices 192x192 + counter 100x2
 #   ./lab.sh serve N          deja el nodo N abierto (sin aplicacion)
 #   ./lab.sh ctl N CMD        consulta el nodo N (stats/pages/dir/...)
 #   ./lab.sh ip N DIRECCION   cambia la IP del nodo N en nodes.conf
@@ -38,7 +38,7 @@ DEFAULT_NODES=4
 mkdir -p "$LOGS" || exit 1
 
 usage() {
-    sed -n '8,25p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '8,22p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 start_node() {
@@ -147,18 +147,32 @@ ip)
         echo "uso: ./lab.sh ip N DIRECCION"
         exit 2
     fi
-    awk -v id="$node_id" -v ip="$addr" '
-        /^[[:space:]]*#/ { print; next }
-        NF == 0          { print; next }
-        $1 == id         { $2 = ip; print; next }
-        { print }
-    ' "$NODES" >"$NODES.tmp" && mv "$NODES.tmp" "$NODES" || exit 1
+    # Se actualizan las dos tablas para que las apps de 2 nodos y las de 4
+    # nodos apunten a la misma maquina.
+    for file in "$NODES" config/nodes_2.conf; do
+        [ -f "$file" ] || continue
+        awk -v id="$node_id" -v ip="$addr" '
+            /^[[:space:]]*#/ { print; next }
+            NF == 0          { print; next }
+            $1 == id         { $2 = ip; print; next }
+            { print }
+        ' "$file" >"$file.tmp" && mv "$file.tmp" "$file" || exit 1
+    done
     echo "nodo $node_id -> $addr"
+    echo "----- $NODES"
     cat "$NODES"
+    if [ -f config/nodes_2.conf ]; then
+        echo "----- config/nodes_2.conf"
+        cat config/nodes_2.conf
+    fi
     ;;
 show)
     echo "----- $NODES"
     cat "$NODES"
+    if [ -f config/nodes_2.conf ]; then
+        echo "----- config/nodes_2.conf"
+        cat config/nodes_2.conf
+    fi
     echo "----- procesos"
     ps -eo pid,args 2>/dev/null | grep '[d]sm_node' || echo "(ninguno)"
     ;;

@@ -10,10 +10,10 @@
 
 ```
 Entregable_3/prototipo2/
-├── include/           # Cabeceras públicas (*.h)
-├── src/               # Implementación (*.c)
-├── config/            # node0.conf..node3.conf, nodes.conf
-├── logs/              # dsm-nodeN.log, swap-nodeN.bin, run-nodeN.out
+├── include/           # 18 cabeceras públicas (*.h)
+├── src/               # 25 módulos (*.c)
+├── config/            # node0.conf..node3.conf, nodes.conf, nodes_2.conf
+├── logs/              # generado al ejecutar (ignorado por git): dsm-nodeN.log, swap-nodeN.bin, run-nodeN.out
 ├── Makefile
 ├── lab.sh             # Subcomandos: build, demo, matrices, file, counter, bench, evict, stress, serve, ctl, ip, show, stop
 └── README.md          # (raíz del repo)
@@ -34,11 +34,11 @@ Entregable_3/prototipo2/
 | `dsm_sync.h` | Mutex/cond con clases y verificación de orden | `dsm_mutex_init(klass)`, `dsm_cond_wait` |
 | `dsm_log.h` | Logging por niveles (ERROR..TRACE) a archivo/stderr | `DSM_LOG(level, fmt...)` |
 | `dsm_stats.h` | Contadores atómicos + snapshot | `dsm_stats_inc`, `dsm_stats_snapshot` |
-| `dsm_fault.h` | Handler SIGSEGV, cola lock-free, contexto por hilo | `dsm_fault_install`, `dsm_attach_thread` |
+| `dsm_fault.h` | Handler SIGSEGV, cola lock-free, contexto por hilo | `dsm_fault_install`, `dsm_fault_attach_thread` |
 | `dsm_coherence.h` | Directorio MSI, ops de coherencia, barrera, objetos | `dsm_coherence_handle_fault`, `dsm_barrier` |
-| `dsm_net.h` | Transporte TCP persistente + pool workers | `dsm_net_start`, `dsm_net_send` (ops.call) |
+| `dsm_net.h` | Transporte TCP persistente + pool workers | `dsm_net_start`, `dsm_net_send`, `dsm_net_call` |
 | `dsm_api.h` | API pública: malloc/free/barrier/stats/attach | `dsm_malloc`, `dsm_free`, `dsm_barrier`, `dsm_stats` |
-| `dsm_runtime.h` | Orquestador: inicializa subsistemas, hilos servicios | `dsm_runtime_init`, `dsm_runtime_start` |
+| `dsm_runtime.h` | Orquestador: inicializa subsistemas, hilos servicios | `dsm_runtime_init`, `dsm_runtime_start_services` |
 | `dsm_control.h` | Servidor texto TCP para `dsmctl` | `dsm_control_start/stop/dispatch` |
 | `dsm_web.h` | Panel HTTP de solo lectura (`/`, `/stats.json`) | `dsm_web_start/stop/render_html` |
 | `dsm_heartbeat.h` | PING/PONG periódico, detección de nodos caídos | `dsm_heartbeat_start/stop` |
@@ -55,7 +55,7 @@ Entregable_3/prototipo2/
 | `sync.c` | `pthread_mutex`/`cond` wrappers + `check_order` (clases GLOBAL/OBJECT/PAGE/FRAME) |
 | `log.c` | `fprintf` con timestamp y nivel; `fflush` cada línea |
 | `stats.c` | `_Atomic uint64_t` array + `snapshot` copia consistente |
-| `fault.c` | `SIGSEGV` → `SEGV_ACCERR` → cola anillo → `sigsuspend`; resolver despierta con `pthread_kill(SIG_RESUME)` |
+| `fault.c` | `SIGSEGV` → `SEGV_ACCERR` → cola anillo → `sigsuspend`; el resolver despierta con `pthread_kill(DSM_SIG_RESUME)` |
 | `coherence.c` | **Núcleo MSI**: directorio hash + `op_lock` por página, `home_serve_read/write`, `forward_from_owner`, `invalidate_node`, `local_install` (reintentos), `coherence_make_room` (evict loop), `handle_*` mensajes, barrera atómica, asignación determinista `alloc_cache[seq]` |
 | `net.c` | Listener + 32 workers; `peer_acquire` conexiones salientes persistentes + mutex; `rpc` con reintentos/backoff; `t_reply_fd` para respuesta en misma conexión |
 | `dsm_api.c` | `dsm_malloc` (seq + RPC `OBJECT_ALLOC` a home), `dsm_free` (`PAGE_RELEASE`), `dsm_barrier` (RPC `BARRIER`), `dsm_stats` (refresca derivados) |
@@ -66,11 +66,11 @@ Entregable_3/prototipo2/
 | `apps.c` | `dsm_app_run` despacha por nombre; `dsm_app_opts_default` (size=0, pages=0) |
 | `app_common.c` | `dsm_app_split_start/count`, `dsm_app_checksum` (xor simple) |
 | `app_matrices.c` | Multiplicación por bloques de filas; verifica `C = A×B` |
-| `app_file.c` | Patrón 64 B; cada nodo escribe su tramo; nodo 0 recalcula checksum por bloque y compara |
-| `app_counter.c` | `pthread` hilos incrementan `*(uint64_t*)dsm_malloc(8)`; barrera final; verifica suma |
-| `app_bench.c` | 3 fases: read local, read remote, write remote; imprime µs/op y MB/s |
+| `app_file.c` | Patrón sintético `(i*31+7) mod 256`; cada nodo escribe su tramo; nodo 0 recalcula el checksum de cada bloque y lo compara |
+| `app_counter.c` | Hilos `pthread` incrementan ranuras de un objeto DSM (`nodes*threads*8` bytes); barrera final; verifica la suma |
+| `app_bench.c` | 3 fases: lectura local, lectura remota, escritura remota; imprime µs/op y MB/s |
 | `app_evict.c` | 2 pasadas: (1) cada nodo escribe `p % nodes == rank`; (2) todos leen todos; reporta expulsiones/swap |
-| `demo_page.c` | Demo mínima: nodo 0 escribe, barrera, nodo 1 escribe, barrera, nodo 0 lee |
+| `demo_page.c` | Demo mínima: nodo 0 escribe, barrera, nodo 1 lee y escribe, barrera, nodo 0 relee, barrera (los nodos ≥ 2 solo pasan las barreras) |
 | `node_main.c` | `main`: parse args, `setvbuf(stdout,_IOLBF,0)`, `dsm_runtime_init/start`, `dsm_app_run`, cleanup |
 | `ctl_main.c` | Cliente `dsmctl`: `--config/--host/--port/--timeout` + comando multi-palabra → TCP → imprime respuesta |
 
@@ -121,20 +121,20 @@ coherence_make_room (avoid_page)
 cd Entregable_3/prototipo2
 make                    # compila dsm_node y dsmctl
 ./lab.sh build          # alias con clean
-./lab.sh demo           # demo 4 nodos (barrera usa nodes.conf)
+./lab.sh demo           # demo en 2 nodos (nodes_2.conf, 3 barreras)
 ./lab.sh matrices --size 64
 ./lab.sh file
 ./lab.sh counter --iters 100 --threads 2
 ./lab.sh bench
-./lab.sh evict --pages 512
-./lab.sh stress         # matrices 192 + counter 2000×4
+./lab.sh evict          # 64 páginas, 32 marcos (2 nodos)
+./lab.sh stress         # matrices 192 + counter 100×2
 ./lab.sh serve 0        # nodo 0 interactivo (Ctrl+C para salir)
 ./lab.sh ctl 0 stats    # consulta nodo 0
 ./lab.sh ctl 0 pages
 ./lab.sh ctl 0 dir
 ./lab.sh ctl 0 objects
 ./lab.sh ctl 0 nodes
-./lab.sh ip 1 198.51.100.32  # cambia IP nodo 1 en nodes.conf
+./lab.sh ip 1 192.0.2.20     # cambia la IP del nodo 1 en nodes.conf y nodes_2.conf
 ./lab.sh show           # muestra nodes.conf + procesos
 ./lab.sh stop           # mata todos los dsm_node
 ```
@@ -173,7 +173,7 @@ Parámetros clave (ver `dsm_config_t` en `dsm_config.h`):
 | `heartbeat_timeout_ms` | 3000 | Umbral nodo caído |
 | `barrier_timeout_ms` | 30000 | Timeout barrera |
 
-`nodes.conf` (id host [port]):
+`nodes.conf` (id host [port]) — 4 nodos, usado por `matrices` y `serve`:
 ```
 0 127.0.0.1 27300
 1 127.0.0.1 27304
@@ -181,13 +181,21 @@ Parámetros clave (ver `dsm_config_t` en `dsm_config.h`):
 3 127.0.0.1 27312
 ```
 
+`nodes_2.conf` — misma sintaxis, solo nodos 0 y 1; lo usan `demo`, `file`, `counter`, `bench` y `evict`:
+```
+0 127.0.0.1 27300
+1 127.0.0.1 27304
+```
+
+La barrera cuenta los nodos del archivo que recibe `--nodes`, así que ambos archivos deben tener una línea por proceso que se va a arrancar.
+
 ---
 
 ## Convenciones y reglas
 
 1. **Comentarios en español**, identificadores `snake_case` en inglés.
 2. **Locks jerárquicos:** `op_lock` (GLOBAL) → `table_lock` (OBJECT) → `page->lock` (PAGE) → `frame_lock` (FRAME). Verificado en runtime.
-3. **Nunca bloquear en red** con lock de página tomado. `op_lock` se toma antes de RPC, se suelta después.
+3. **Nunca bloquear en red con lock de página o de marco tomado.** `op_lock` sí se mantiene durante el RPC: es el serializador por página del home, y su función es justamente que dos operaciones sobre la misma página no se entrelacen.
 4. **Fail-stop:** RPC fallido → `DSM_ERR_TIMEOUT`/`PEER_DOWN` → hilo usuario muere con `SIGSEGV`.
 5. **Swap solo en home:** Clientes devuelven páginas sucias; home escribe a `logs/swap-nodeN.bin`.
 6. **Asignación determinista:** `dsm_alloc_req_t.seq` = contador por nodo; home cachea `seq → reply` en `alloc_cache[DSM_MAX_OBJECTS]`.
@@ -221,8 +229,10 @@ Parámetros clave (ver `dsm_config_t` en `dsm_config.h`):
 ## Limitaciones del código actual
 
 - Home único (nodo 0) sin failover.
-- Backlog `accept` fijo (128); bajo ráfaga extrema puede rechazar conexiones transitoriamente.
-- Panel web sin autenticación ni TLS.
+- Backlog `accept` fijo (128); bajo ráfaga extrema puede rechazar conexiones transitoriamente (visto con `evict` de 4 nodos y 512 páginas).
+- `evict` de 4 nodos con 512 páginas no es reproducible al 100 %: hay timeouts de red en el pico de `PAGE_RELEASE`. La configuración estable es 2 nodos con 64 páginas y 32 marcos.
+- `counter` pierde incrementos con contención alta: los dos nodos escriben en la misma página de 4 KB y el home cede la propiedad copiando su copia y soltándola, así que las escrituras que caen en esa ventana se pierden (`2000×4` dio `8000` de `16000`). Con `100×2` el resultado es determinista.
+- Panel web sin autenticación ni TLS, y no verificado en Alpine (sin cliente HTTP en la imagen de pruebas).
 - Sin compresión/agrupación de mensajes (1 RPC por página).
 - `DSM_MAX_NODES=16` hardcodeado.
 - `dsm_malloc` no soporta `free` de sub-rangos (solo objeto completo).
@@ -231,14 +241,16 @@ Parámetros clave (ver `dsm_config_t` en `dsm_config.h`):
 
 ## Próximos pasos (entrega final)
 
-1. Elección de home + réplica de directorio.
-2. `replication_factor` > 0 con lectura local de réplica.
-3. Checkpointing periódico de páginas sucias.
-4. Agrupación `INVALIDATE_BATCH` + prefetch.
-5. Panel web con gráficos (Chart.js) + histórico.
-6. Pruebas en 2+ máquinas físicas (`./lab.sh ip`).
-7. Benchmarks comparativos (speedup vs local/MPI).
-8. Documentación API (Doxygen/man pages).
+1. Corregir `counter` con alta contención: una página de 4 KB por nodo (ranuras en `page_base + rank * page_size`) y revisar la cesión de propiedad del home (copiar bajo protección de escritura antes de soltar la copia).
+2. Estabilizar `evict` de 4 nodos con 512 páginas (backlog de `accept`, reconexión en segundo plano o límite de ráfaga).
+3. Elección de home + réplica de directorio.
+4. `replication_factor` > 0 con lectura local de réplica.
+5. Checkpointing periódico de páginas sucias.
+6. Agrupación `INVALIDATE_BATCH` + prefetch.
+7. Panel web con gráficos (Chart.js) + histórico.
+8. Pruebas en 2+ máquinas físicas (`./lab.sh ip`).
+9. Benchmarks comparativos (speedup vs local/MPI).
+10. Documentación API (Doxygen/man pages).
 
 ---
 

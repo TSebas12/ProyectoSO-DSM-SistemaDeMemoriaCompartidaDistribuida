@@ -2,7 +2,7 @@
 
 > Diseño de un sistema DSM con paginación bajo demanda y coherencia MSI sobre Linux, escrito en C11.
 
-**Estado:** **E3 (Prototipo 2) completado y validado** · probado en WSL2 (4 nodos locales en loopback)
+**Estado:** **E3 (Prototipo 2) completado y validado** · probado en WSL2 (4 nodos locales en loopback) · limitaciones conocidas en el [entregable 3](Entregable_3/03_Entregable_3_Prototipo_2.md)
 **Curso:** IC-6600 Principios de Sistemas Operativos
 **Institución:** Instituto Tecnológico de Costa Rica — Escuela de Ingeniería en Computación
 **Repositorio:** https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida.git
@@ -157,7 +157,7 @@ make
 ./lab.sh ctl 0 dir     # directorio (solo home)
 ./lab.sh ctl 0 objects # objetos asignados
 ./lab.sh ctl 0 nodes   # nodos + heartbeat
-./lab.sh ip 1 198.51.100.32  # cambia IP nodo 1 (para 2 máquinas)
+./lab.sh ip 1 192.0.2.20    # cambia IP nodo 1 (para 2 máquinas)
 ./lab.sh show          # nodes.conf + procesos
 ./lab.sh stop          # mata todos los nodos
 

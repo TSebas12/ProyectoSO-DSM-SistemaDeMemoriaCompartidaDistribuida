@@ -8,7 +8,7 @@
  * Uso:
  *   ./dsmctl stats
  *   ./dsmctl --config config/node1.conf pages
- *   ./dsmctl --host 198.51.100.32 --port 27305 dir
+ *   ./dsmctl --host 192.0.2.20 --port 27305 dir
  *
  * El cliente abre una conexión TCP, envía una línea y copia la respuesta a la
  * salida estándar. Si no se indica host/puerto, se toman del archivo de

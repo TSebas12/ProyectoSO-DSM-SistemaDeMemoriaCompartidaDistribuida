@@ -13,7 +13,7 @@
  * Formato del archivo (una línea por nodo, '#' inicia comentario):
  *
  *   0 127.0.0.1 27300
- *   1 198.51.100.32 27304
+ *   1 192.0.2.20 27304
  *
  * El puerto es opcional: si se omite se usa base_port + 4 * node_id, que es la
  * regla de la pareja #3 (rango 27300-27399).
