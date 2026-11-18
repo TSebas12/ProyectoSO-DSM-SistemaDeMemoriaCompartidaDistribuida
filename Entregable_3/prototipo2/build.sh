@@ -1,10 +1,25 @@
 #!/bin/sh
 # Compila dsm_node y dsmctl nativamente en Linux Mint/glibc.
-# Necesita _GNU_SOURCE para sem_timedwait, CLOCK_MONOTONIC, memfd_create, etc.
+# Forzamos un header común que trae todo lo que glibc necesita.
 
 set -e
 
-CFLAGS="-std=c11 -D_GNU_SOURCE -Iinclude -O2 -g"
+CFLAGS="-std=c11 -D_GNU_SOURCE -Iinclude -O2 -g -include common_glibc.h"
+
+# Crear header temporal con includes que faltan en glibc
+cat > common_glibc.h << 'EOF'
+#define _GNU_SOURCE
+#include <signal.h>
+#include <time.h>
+#include <semaphore.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/ucontext.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stddef.h>
+EOF
 
 gcc $CFLAGS -o dsm_node \
     src/sync.c src/stats.c src/memory.c src/fault.c src/coherence.c \
@@ -17,5 +32,6 @@ gcc $CFLAGS -o dsm_node \
 gcc $CFLAGS -o dsmctl \
     src/ctl_main.c src/config.c -lpthread -lm
 
+rm -f common_glibc.h
 ls -la dsm_node dsmctl
 echo "OK: binarios listos"

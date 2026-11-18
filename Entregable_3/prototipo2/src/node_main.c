@@ -180,10 +180,16 @@ int main(int argc, char **argv)
         fprintf(stderr, "sin memoria para el runtime\n");
         return 1;
     }
-    if (dsm_runtime_init(rt, &cfg, &nodes) != DSM_OK) {
-        fprintf(stderr, "nodo %u: fallo el arranque del runtime\n", cfg.node_id);
-        free(rt);
-        return 1;
+    {
+        dsm_status_t rst = dsm_runtime_init(rt, &cfg, &nodes);
+
+        if (rst != DSM_OK) {
+            fprintf(stderr,
+                    "nodo %u: fallo el arranque del runtime (%s, errno=%d: %s)\n",
+                    cfg.node_id, dsm_status_str(rst), errno, strerror(errno));
+            free(rt);
+            return 1;
+        }
     }
     if (dsm_attach(rt) != DSM_OK) {
         fprintf(stderr, "nodo %u: no se pudo registrar el hilo principal\n",
@@ -192,9 +198,14 @@ int main(int argc, char **argv)
         free(rt);
         return 1;
     }
-    if (dsm_runtime_start_services(rt) != DSM_OK) {
-        fprintf(stderr, "nodo %u: no se pudieron levantar los servicios\n",
-                cfg.node_id);
+    {
+        dsm_status_t sst = dsm_runtime_start_services(rt);
+
+        if (sst != DSM_OK) {
+            fprintf(stderr,
+                    "nodo %u: no se pudieron levantar los servicios (%s, errno=%d: %s)\n",
+                    cfg.node_id, dsm_status_str(sst), errno, strerror(errno));
+        }
     }
 
     printf("nodo %u: listo. control=%u web=%u (%s)\n",

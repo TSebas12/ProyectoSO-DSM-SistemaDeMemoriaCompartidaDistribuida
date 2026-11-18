@@ -68,3 +68,4 @@ venv/
 __pycache__/
 *.tmp
 *.bak
+.dsm_state
