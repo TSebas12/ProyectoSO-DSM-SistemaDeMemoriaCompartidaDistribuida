@@ -24,7 +24,25 @@
 #include "dsm_runtime.h"
 #include "dsm_stats.h"
 
-#define DSM_DEMO_BARRIER_MS 30000u
+#define DSM_DEMO_BARRIER_MS 120000u
+
+/*
+ * La barrera devuelve error si el otro nodo no llega a tiempo. Si se ignora,
+ * la demo sigue con datos que todavía no existen y la evidencia sale mal.
+ */
+static int demo_barrier(dsm_runtime_t *rt, const char *etapa)
+{
+    dsm_status_t st = dsm_barrier(rt, DSM_DEMO_BARRIER_MS);
+
+    if (st != DSM_OK) {
+        fprintf(stderr,
+                "nodo %u: demo: la barrera '%s' fallo (%s). "
+                "Arranca los dos nodos con menos de 2 minutos de diferencia.\n",
+                dsm_node_id(rt), etapa, dsm_status_name(st));
+        return -1;
+    }
+    return 0;
+}
 
 int dsm_demo_page_run(dsm_runtime_t *rt)
 {
@@ -58,19 +76,25 @@ int dsm_demo_page_run(dsm_runtime_t *rt)
         snprintf((char *)obj, page_size, "hola desde el nodo 0");
         printf("nodo 0: escribio la pagina 0: '%s'\n", (char *)obj);
     }
-    (void)dsm_barrier(rt, DSM_DEMO_BARRIER_MS);
+    if (demo_barrier(rt, "escritura inicial") != 0) {
+        return -1;
+    }
 
     if (rank == 1) {
         printf("nodo 1: leyo la pagina 0: '%s'\n", (char *)obj);
         snprintf((char *)obj, page_size, "hola desde el nodo 1");
         printf("nodo 1: escribio la pagina 0: '%s'\n", (char *)obj);
     }
-    (void)dsm_barrier(rt, DSM_DEMO_BARRIER_MS);
+    if (demo_barrier(rt, "escritura del nodo 1") != 0) {
+        return -1;
+    }
 
     if (rank == 0) {
         printf("nodo 0: tras el writeback, pagina 0 -> '%s'\n", (char *)obj);
     }
-    (void)dsm_barrier(rt, DSM_DEMO_BARRIER_MS);
+    if (demo_barrier(rt, "lectura final") != 0) {
+        return -1;
+    }
 
     if (rank == 0) {
         dsm_stats_view_t view;

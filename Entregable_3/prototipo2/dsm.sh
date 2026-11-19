@@ -246,7 +246,7 @@ do_app() {
     echo "Ejecutando en ESTA máquina:"
     echo "  ./dsm_node --config $cfg --nodes $NODES2 ${args[*]}"
     echo
-    echo "Lanzá lo MISMO en la otra máquina ahora (tenés 60-120 s)."
+    echo "Lanzá lo MISMO en la otra máquina AHORA (tenés menos de 2 minutos)."
     echo
     ./dsm_node --config "$cfg" --nodes "$NODES2" "${args[@]}"
 }
