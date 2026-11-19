@@ -186,7 +186,7 @@ int main(int argc, char **argv)
         if (rst != DSM_OK) {
             fprintf(stderr,
                     "nodo %u: fallo el arranque del runtime (%s, errno=%d: %s)\n",
-                    cfg.node_id, dsm_status_str(rst), errno, strerror(errno));
+                    cfg.node_id, dsm_status_name(rst), errno, strerror(errno));
             free(rt);
             return 1;
         }
@@ -204,7 +204,7 @@ int main(int argc, char **argv)
         if (sst != DSM_OK) {
             fprintf(stderr,
                     "nodo %u: no se pudieron levantar los servicios (%s, errno=%d: %s)\n",
-                    cfg.node_id, dsm_status_str(sst), errno, strerror(errno));
+                    cfg.node_id, dsm_status_name(sst), errno, strerror(errno));
         }
     }
 

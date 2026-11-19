@@ -141,7 +141,9 @@ do_build() {
     hdr="$(mktemp)" || return 1
 
     cat >"$hdr" <<'EOF'
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <signal.h>
 #include <time.h>
 #include <semaphore.h>

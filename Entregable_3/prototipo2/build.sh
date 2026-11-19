@@ -8,7 +8,9 @@ CFLAGS="-std=c11 -D_GNU_SOURCE -Iinclude -O2 -g -include common_glibc.h"
 
 # Crear header temporal con includes que faltan en glibc
 cat > common_glibc.h << 'EOF'
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <signal.h>
 #include <time.h>
 #include <semaphore.h>
