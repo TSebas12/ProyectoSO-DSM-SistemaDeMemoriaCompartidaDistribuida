@@ -531,6 +531,13 @@ static void serve_connection(dsm_net_t *net, int cfd)
         }
         note_received(net, total);
 
+        /*
+         * La respuesta debe volver por la MISMA conexión en la que llegó la
+         * petición: el solicitante está bloqueado leyendo de ese socket.
+         * Vale para PING/PONG, STATS y para lo que responda la coherencia.
+         */
+        t_reply_fd = cfd;
+
         /* Mensajes de servicio que no pasan por la coherencia. */
         if (msg.type == DSM_MSG_PING) {
             reply_simple(net, &msg, DSM_MSG_PONG, NULL, 0, DSM_OK);
@@ -552,10 +559,10 @@ static void serve_connection(dsm_net_t *net, int cfd)
              * La coherencia responde con ops.send(); ese envío debe volver por
              * esta misma conexión para que el RPC del solicitante lo lea.
              */
-            t_reply_fd = cfd;
             (void)dsm_coherence_handle_message(net->co, &msg);
-            t_reply_fd = -1;
         }
+
+        t_reply_fd = -1;
 
         if (msg.data != NULL) {
             free((void *)msg.data);

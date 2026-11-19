@@ -1921,7 +1921,7 @@ int dsm_coherence_format_dir(dsm_coherence_t *co, char *buf, size_t len)
     dsm_mutex_unlock(&co->dir_lock);
     if (count == 0) {
         used += (size_t)snprintf(buf + used, len - used,
-                                 "(directorio vacio: este nodo no es el home)\n");
+                                 "(directorio vacio: aun no hay paginas registradas)\n");
     }
     return (int)used;
 }
