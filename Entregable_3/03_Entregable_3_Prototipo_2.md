@@ -37,7 +37,7 @@ Este documento describe el **Prototipo 2** del DSM distribuido para IC-6600. El 
 - **Observabilidad:** `dsmctl` (texto sobre TCP) y panel web (`/`, `/stats.json`) exponen estadísticas, páginas, directorio, objetos y nodos.
 - **Scripts de operación:** `lab.sh` unifica build, demo, apps, control, IP, show, stop en comandos cortos.
 
-**Validación:** en WSL2 (Alpine) con 4 procesos locales sobre `127.0.0.1`. `matrices` (64×64 y 192×192) corre con 4 nodos; `demo`, `file`, `counter`, `bench` y `evict` corren con la tabla reducida `nodes_2.conf` (2 nodos), que es la configuración estable. Todos terminan con 0 errores y 0 timeouts. Métricas de latencia: lectura local ~0.06 µs, lectura remota ~130–280 µs, escritura remota ~120–230 µs. Las limitaciones que quedan abiertas se detallan en §11.
+**Validación:** en WSL2 (Alpine) con 4 procesos locales sobre `127.0.0.1`. `matrices` (64×64 y 192×192) corre con 4 nodos; `demo`, `file`, `counter`, `bench` y `evict` corren con la tabla reducida `nodes_2.conf` (2 nodos), que es la configuración estable. Todos terminan con 0 errores y 0 timeouts. Métricas de latencia: lectura local ~0.06 µs, lectura remota ~130–280 µs, escritura remota ~120–230 µs. Además se ejecutó en **2 PCs físicas del laboratorio** (A `172.19.13.67`, B `172.19.13.32`) con las seis aplicaciones sobre `nodes_2.conf`; el detalle está en §9.3.1. Las limitaciones que quedan abiertas se detallan en §11.
 
 ---
 
@@ -116,7 +116,7 @@ Cada nodo ejecuta:
 ### 5.2 Diagrama de despliegue
 
 - **Máquina única (desarrollo/WSL):** 4 procesos `dsm_node` en los puertos 27300/27304/27308/27312, todos en `127.0.0.1`. `nodes.conf` declara los 4 endpoints y lo usan `matrices` y `serve`; `nodes_2.conf` declara solo los nodos 0 y 1 y lo usan `demo`, `file`, `counter`, `bench` y `evict`. La barrera cuenta los nodos del archivo que se pasa con `--nodes`.
-- **Dos máquinas (objetivo de la demo final, pendiente de validar):** nodo 0 en `<IP-A>:27300`, nodo 1 en `<IP-B>:27304`. `nodes.conf` y `nodes_2.conf` deben ser idénticos en ambas máquinas; `./lab.sh ip 1 <IP-B>` actualiza la dirección del nodo 1 en las dos tablas sin editar los archivos a mano.
+- **Dos máquinas (validado en el laboratorio, 19 nov 2026):** nodo 0 (home) en `172.19.13.67:27300` y nodo 1 en `172.19.13.32:27304`. Las dos PCs usan la misma tabla `nodes_2.conf` y el `seed_host` del nodo 1 apunta a A; `./dsm.sh` (opciones 1 a 3) deja esa configuración sin editar archivos a mano.
 - **Cuatro máquinas:** Análogo, una línea por nodo en `nodes.conf`.
 
 ### 5.3 Cambios respecto al prototipo 1
@@ -276,6 +276,26 @@ Cada nodo ejecuta:
 | counter 100×2 | 2 | 3 / 2 | 0 | 0 | 0 | 0 |
 | bench 64 páginas | 2 | 96 / 96 | 0 | 0 | 0 | 0 |
 | evict 64p/32f | 2 | 65 / 93 | 123 (home) / 61 | 503808 B | 0 | 0 |
+
+### 9.3.1 Corrida en 2 PCs del laboratorio (19 nov 2026)
+
+| Equipo | Rol | IP | Puertos |
+|---|---|---|---|
+| PC A | home / nodo 0 | `172.19.13.67` | 27300–27303 |
+| PC B | cliente / nodo 1 | `172.19.13.32` | 27304–27307 |
+
+Las dos con Linux Mint 22.3, `nodes_2.conf` con las dos direcciones y el `seed_host` del nodo 1 apuntando a A. A se arrancó primero y B dentro de los 2 minutos siguientes. Las seis aplicaciones se lanzaron desde el menú `./dsm.sh` (opción 5).
+
+| Aplicación | Verificación |
+|---|---|
+| `demo` | A: `tras el writeback, pagina 0 -> 'hola desde el nodo 1'`, `fallos=2`, `reenvios=1`, `barreras=3`, `errores=0`. B: `fallos=2`, 1 lectura y 1 escritura remotas, `errores=0` |
+| `file` (1 MB) | A: `checksum completo = 0xc2dc9dc5, 2 bloques, OK`, `fallos=259`, `expulsiones=2`, `swap=8192`. B: tramo `524288..1048576` con checksum `0x21fc9dc5`, `fallos=129`, 128 lecturas remotas, `errores=0` |
+| `counter` (100×2) | A: `suma = 400, esperado = 400, OK`, `fallos=3`, `barreras=1`. B: `2 hilos x 100 incrementos`, `fallos=2`. Invalidaciones en 0 en las dos: con 2 nodos el home suelta su copia localmente y no envía mensaje de invalidación |
+| `bench` (64 páginas) | A: lectura local `0.06 µs/op`, remota `932.72 µs/op`, escritura remota `680.84 µs/op`. B: `0.03`, `879.88` y `860.62 µs/op`. `tiempos agotados=0` en las dos |
+| `evict` (64p/32f) | `primera pasada lista` y `segunda pasada lista` en las dos. A (home): `expulsiones=100 sucias=46 swap=409600 bytes residentes=32 libres=0`. B: `expulsiones=66 sucias=5 swap=0 bytes residentes=32 libres=0` |
+| `matrices` (64×64) | A: filas `0..32`, 1.72 ms. B: filas `32..64`, 16.82 ms. Las dos: `verificacion: OK (0 discrepancias)` |
+
+> En A aparecen `errores=2` (en `file`) y en B `errores=7`, `3`, `2` y `2` (en `counter`, `bench`, `evict` y `matrices`): son `PING` y reintentos de arranque mientras el otro nodo terminaba de levantar, no fallos de coherencia ni de datos. `demo` cerró con `errores=0` en las dos. Las capturas completas están en `MA-P1…P6` y `MB-P1…P6` (no versionadas).
 
 ### 9.4 Problemas detectados y resueltos
 
