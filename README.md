@@ -2,7 +2,7 @@
 
 > Diseño de un sistema DSM con paginación bajo demanda y coherencia MSI sobre Linux, escrito en C11.
 
-**Estado:** **E3 (Prototipo 2) completado** · validado en WSL2 con 4 nodos en loopback · E2 validado además en 2 máquinas físicas · pendientes: captura del panel web y corrida de E3 en 2 PCs · limitaciones en el [entregable 3](Entregable_3/03_Entregable_3_Prototipo_2.md)
+**Estado:** **E3 (Prototipo 2) completado** · validado en WSL2 con 4 nodos en loopback y en 2 PCs del laboratorio (6 aplicaciones) · E2 validado además en 2 máquinas físicas · pendientes: capturas de evidencia y manual de usuario · limitaciones en el [entregable 3](Entregable_3/03_Entregable_3_Prototipo_2.md)
 **Curso:** IC-6600 Principios de Sistemas Operativos
 **Institución:** Instituto Tecnológico de Costa Rica — Escuela de Ingeniería en Computación
 **Repositorio:** https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida.git
@@ -85,7 +85,7 @@ flowchart LR
 |---|---|---|
 | E1 — Documento de diseño | 6 nov 2026 | ✅ Completado |
 | E2 — Prototipo 1 y arquitectura actualizada | 13 nov 2026 | ✅ **Completado — validado en WSL2 y laboratorio (2 máquinas físicas)** |
-| E3 — Prototipo 2 y arquitectura actualizada | 20 nov 2026 | ✅ **Completado — validado en WSL2 (4 nodos en loopback); pendiente captura web y corrida en 2 PCs** |
+| E3 — Prototipo 2 y arquitectura actualizada | 20 nov 2026 | ✅ **Completado — validado en WSL2 (4 nodos) y en 2 PCs del laboratorio (6 aplicaciones)** |
 | Entrega final — Demo en vivo | 27 nov 2026 | ⏳ Pendiente |
 
 ## Resultados medidos
@@ -106,9 +106,31 @@ Datos de corridas ejecutadas y registradas; no son estimaciones.
 
 **Verificación de datos:** `matrices` → `verificacion: OK (0 discrepancias)` · `file` → `checksum completo = 0xc2dc9dc5` · `counter` → `suma = 400, esperado = 400` · `evict` → `(suma 0)`.
 
-**Latencias de `bench`:** lectura local ~0.06 µs · lectura remota 130–280 µs · escritura remota 120–230 µs.
+**Latencias de `bench` (WSL2):** lectura local ~0.06 µs · lectura remota 130–280 µs · escritura remota 120–230 µs.
 
 **Prototipo 1 — 2 máquinas físicas (13 nov 2026):** `demo` con fallos de página 2/2, 1 reenvío y 3 barreras.
+
+**Prototipo 2 — 2 PCs del laboratorio (19 nov 2026):**
+
+| Equipo | Rol | IP | Puertos |
+|---|---|---|---|
+| PC A | home / nodo 0 | `192.0.2.10` | 27300–27303 |
+| PC B | cliente / nodo 1 | `192.0.2.11` | 27304–27307 |
+
+Las dos con Linux Mint 22.3. `nodes_2.conf` con las dos direcciones y el `seed_host` del nodo 1 apuntando a A.
+
+Se ejecutaron las seis aplicaciones (`demo`, `file`, `counter`, `bench`, `evict` y `matrices`) sobre las dos máquinas, arrancando A primero y B dentro de los 2 minutos siguientes.
+
+| Prueba | PC A (home) | PC B (nodo 1) |
+|---|---|---|
+| `demo` | leyó `'hola desde el nodo 1'` tras el writeback; 2 fallos, 3 barreras, 0 errores | 2 fallos, 1 lectura y 1 escritura remotas |
+| `file` (1 MB) | checksum `0xc2dc9dc5`, `2 bloques, OK`; 259 fallos, `swap=8192` | tramo `524288..1048576`, checksum `0x21fc9dc5`, 129 fallos |
+| `counter` (100×2) | `suma = 400, esperado = 400, OK`; 3 fallos | `2 hilos x 100 incrementos`; 2 fallos |
+| `bench` (64 páginas) | 0.06 / 932.72 / 680.84 µs (local / lectura / escritura) | 0.03 / 879.88 / 860.62 µs |
+| `evict` (64p/32f) | 100 expulsiones, 46 sucias, `swap=409600 B`, 0 libres | 66 expulsiones, 5 sucias, `swap=0`, 0 libres |
+| `matrices` (64×64) | filas `0..32`, 1.72 ms, `OK (0 discrepancias)` | filas `32..64`, 16.82 ms, `OK (0 discrepancias)` |
+
+El detalle de cada corrida está en el [entregable 3](Entregable_3/03_Entregable_3_Prototipo_2.md), §9.3.1.
 
 ## Estructura del repositorio
 
@@ -190,25 +212,22 @@ make
 
 ## Prueba en dos máquinas
 
-Ambas PCs necesitan la misma tabla de nodos y el nodo 1 debe apuntar al home.
+La interfaz recomendada es `./dsm.sh`, que hace todo sin editar archivos a mano.
 
 ```bash
-# En ambas PCs
-cd Entregable_3/prototipo2 && ./lab.sh build
-
-# PC A (nodo 0 / home)
-./lab.sh ip 0 <IP_A>
-./lab.sh ip 1 <IP_B>
-./dsm_node --config config/node0.conf --nodes config/nodes_2.conf --app demo
-
-# PC B (nodo 1)
-./lab.sh ip 0 <IP_A>
-./lab.sh ip 1 <IP_B>
-sed -i 's/^seed_host.*/seed_host = <IP_A>/' config/node1.conf
-./dsm_node --config config/node1.conf --nodes config/nodes_2.conf --app demo
+# En las dos PCs
+cd Entregable_3/prototipo2
+./dsm.sh
 ```
 
-Cambiar `--app demo` por `file`, `counter`, `bench` o `evict --pages 64 --frames 32`. Abrir TCP `27300–27315` en el firewall de cada PC y arrancar primero la PC A.
+1. Opción **1**: IP de A y IP de B (los mismos valores en las dos PCs).
+2. Opción **2**: rol **A** en la PC A (home, nodo 0) y rol **B** en la PC B (nodo 1).
+3. Opción **3**: compilar.
+4. Opción **5**: elegir la aplicación.
+
+Arrancar siempre la PC A primero y la B dentro de los 2 minutos siguientes: la barrera de `demo` espera como máximo 120 s. Abrir TCP `27300–27315` en el firewall de cada PC.
+
+Ejemplo validado en el laboratorio: A `192.0.2.10`, B `192.0.2.11`.
 
 ## Limitaciones conocidas
 

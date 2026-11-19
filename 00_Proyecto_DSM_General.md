@@ -18,7 +18,7 @@
 | **Repositorio Git** | https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida.git |
 | **Versión del documento** | 1.7 |
 | **Fecha de elaboración** | 30 de octubre de 2026 |
-| **Última actualización** | 17 de noviembre de 2026 |
+| **Última actualización** | 19 de noviembre de 2026 |
 | **Estado** | Documento maestro de referencia; E1 y E2 entregados, E3 listo para entrega y resultados reales de ambos prototipos incorporados (§13.6) |
 
 ### Control de versiones
@@ -33,6 +33,7 @@
 | 1.5 | 30 oct 2026 | Redactado el diseño formal del Entregable 1 en `Entregable_1/01_Entregable_1_Diseno.md`. |
 | 1.6 | 10 nov 2026 | Rango de puertos definitivo de la pareja #3: `27300–27399` (antes `50000–50099`, que era una propuesta a validar). |
 | 1.7 | 17 nov 2026 | Repositorio confirmado; pendientes operativos resueltos; incorporados los resultados reales de E2 (2 máquinas físicas) y E3 (4 nodos en loopback) en §13.6, el estado de cada hito en §14.1 y las decisiones cerradas en §21.1. |
+| 1.8 | 19 nov 2026 | E3 ejecutado en 2 PCs del laboratorio (A `192.0.2.10`, B `192.0.2.11`) con las seis aplicaciones; resultados de la corrida incorporados en §13.6 y en el entregable 3, §9.3.1. |
 
 > [!IMPORTANT]
 > **Nota de decisiones pendientes y respuestas temporales**
@@ -42,7 +43,7 @@
 > | Tema | Respuesta actual | Estado | Impacto |
 > |---|---|---|---|
 > | Rango de puertos | **100 puertos**: `27300–27399` | **Confirmado** | Rango asignado a la pareja **#3**. El esquema de offsets se mantiene. |
-> | Equipos del laboratorio | 2 máquinas físicas usadas el 13 nov (E2); E3 validado con 4 procesos en loopback | **Resuelto (parcial)** | Falta confirmar 4 equipos para la demo final. |
+> | Equipos del laboratorio | 2 máquinas físicas usadas el 13 nov (E2) y el 19 nov (E3, seis aplicaciones); E3 también validado con 4 procesos en loopback | **Resuelto (parcial)** | Falta confirmar 4 equipos para la demo final. |
 > | URL del repositorio Git | https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida.git | **Resuelto** | Repositorio público con E1, E2 y E3. |
 > | Cita de demo | 27 de noviembre de 2026; hora y laboratorio exactos pendientes | **Pendiente** | Afecta planificación final. |
 > | Número de nodos para la demo | **4 nodos ideales**; mínimo 2 | **Confirmado** | Confirmar disponibilidad física en el laboratorio. |
@@ -1932,6 +1933,26 @@ Verificación de datos: `matrices` cierra con `verificacion: OK (0 discrepancias
 
 Latencias de `bench` (64 páginas, 32 operaciones por fase, 2 nodos): lectura local ~0.06 µs, lectura remota 130–280 µs, escritura remota 120–230 µs. El throughput derivado es de 15–31 MB/s en lectura remota y 18–34 MB/s en escritura remota.
 
+**E3 — Prototipo 2, 2 PCs del laboratorio (19 de noviembre de 2026):**
+
+| Equipo | Rol | IP | Puertos |
+|---|---|---|---|
+| PC A | home / nodo 0 | `192.0.2.10` | 27300–27303 |
+| PC B | cliente / nodo 1 | `192.0.2.11` | 27304–27307 |
+
+Las dos con Linux Mint 22.3, tabla `nodes_2.conf` con las dos direcciones y el `seed_host` del nodo 1 apuntando a A. Las seis aplicaciones se lanzaron desde `./dsm.sh` (opción 5), con A primero y B dentro de los 2 minutos siguientes.
+
+| Prueba | Verificación |
+|---|---|
+| `demo` | A: `'hola desde el nodo 1'` tras el writeback, `fallos=2`, `reenvios=1`, `barreras=3`, `errores=0`; B: 1 lectura y 1 escritura remotas |
+| `file` (1 MB) | A: `checksum completo = 0xc2dc9dc5, 2 bloques, OK`, `fallos=259`, `swap=8192`; B: tramo `524288..1048576` con checksum `0x21fc9dc5` |
+| `counter` (100×2) | A: `suma = 400, esperado = 400, OK`; B: 2 hilos × 100 incrementos |
+| `bench` (64 páginas) | A: 0.06 / 932.72 / 680.84 µs (local / lectura remota / escritura remota); B: 0.03 / 879.88 / 860.62 µs |
+| `evict` (64p/32f) | A: `expulsiones=100 sucias=46 swap=409600 bytes`; B: `expulsiones=66 sucias=5 swap=0 bytes`; las dos con 32 residentes y 0 libres |
+| `matrices` (64×64) | A: filas `0..32`, 1.72 ms; B: filas `32..64`, 16.82 ms; `verificacion: OK (0 discrepancias)` en las dos |
+
+> En A y B aparecen `errores` y `reintentos` de arranque (2 en A; 7, 3, 2 y 2 en B): son `PING` enviados mientras el otro nodo terminaba de levantar, no fallos de coherencia. `demo` cerró con `errores=0` en las dos. Las latencias remotas del laboratorio (680–933 µs) son mayores que las de loopback por la red física.
+
 > **Nota.** El detalle completo, las limitaciones abiertas (pérdida de incrementos de `counter` con 2000×4 e inestabilidad de `evict` con 4 nodos y 512 páginas) y el trabajo pendiente están en `Entregable_3/03_Entregable_3_Prototipo_2.md`, §9 a §12.
 
 ---
@@ -1944,7 +1965,7 @@ Latencias de `bench` (64 páginas, 32 operaciones por fase, 2 nodos): lectura lo
 |---|---|---|---|
 | **V. 06.Nov.2026** | **Entregable 1** | Documento de Diseño del sistema DSM. Arquitectura general, borrador de API inicial, protocolo de mensajes, datos de configuración. Incluye detalles de implementación: estructuras, tipos de datos, tamaños, etc. | ✅ Entregado; documento y PDF público en el repositorio. |
 | **V. 13.Nov.2026** | **Entregable 2** | Prototipo 1 y Arquitectura actualizada. Primera implementación de la arquitectura inicial propuesta y documentación de los cambios o ajustes realizados a la primera versión. | ✅ Entregado; prototipo 1 validado en WSL2 y en 2 máquinas físicas. |
-| **V. 20.Nov.2026** | **Entregable 3** | Prototipo 2 y Arquitectura actualizada. Implementación mejorada del prototipo inicial propuesto y documentación de los cambios o ajustes realizados para esta segunda versión. | ✅ Documento y código listos (17 nov); validado en WSL2 con 4 nodos. |
+| **V. 20.Nov.2026** | **Entregable 3** | Prototipo 2 y Arquitectura actualizada. Implementación mejorada del prototipo inicial propuesto y documentación de los cambios o ajustes realizados para esta segunda versión. | ✅ Documento y código listos; validado en WSL2 con 4 nodos y en 2 PCs del laboratorio (seis aplicaciones). |
 | **V. 27.Nov.2026** | **Entrega Final** | Demo en Vivo en el Laboratorio mediante citas de revisión. | ⏳ Pendiente. |
 
 > **Aclaración importante:** el cuarto hito del PDF se llama **“Entrega Final”**, no “Entregable 3”. En el mensaje del usuario aparece como “Entregable 3. Demo en Vivo”; se trata de una numeración informal. Para efectos de planificación se usará: E1, E2, E3 y **Final**. La fecha de la demo es el 27 de noviembre de 2026.

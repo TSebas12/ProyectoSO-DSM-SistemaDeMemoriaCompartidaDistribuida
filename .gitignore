@@ -61,6 +61,9 @@ desktop.ini
 Entregable_2/*.png
 Entregable_2/*.jpg
 Entregable_2/*.jpeg
+Entregable_3/**/*.png
+Entregable_3/**/*.jpg
+Entregable_3/**/*.jpeg
 
 # --- Entornos y temporales ----------------------------------
 .env
