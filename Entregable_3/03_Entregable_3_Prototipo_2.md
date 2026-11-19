@@ -181,7 +181,7 @@ Cada nodo ejecuta:
 | **Protocolo** | 11 tipos de mensaje nuevos; `DSM_FLAG_NEED_DATA` en `INVALIDATE` para writeback implícito. |
 | **Configuración** | 4 archivos por nodo (`node0.conf`…`node3.conf`) + `nodes.conf` + `nodes_2.conf`; `thread_pool_size=32`, `network_timeout_ms=10000`. |
 | **Estructuras** | `dsm_dir_entry_t.op_lock`, `dsm_fault_req_t` con `ctx`, `dsm_thread_ctx_t` por hilo. |
-| **Rendimiento** | Latencia media RPC 130–430 µs según carga; lectura remota 130–280 µs; escritura remota 120–230 µs. |
+| **Rendimiento** | Lectura local ~0.06 µs; lectura remota 130–280 µs; escritura remota 120–230 µs (§10.2). |
 
 ---
 
@@ -364,7 +364,7 @@ El **Prototipo 2** cumple y supera los requisitos mínimos del enunciado:
 - **Arranca 4 nodos ideales** con hilos concurrentes y páginas bajo demanda.
 - **Coherencia MSI funcional** en lectura/escritura remota, invalidaciones y writeback.
 - **Expulsión LRU + swap** soporta presión de memoria real (64 páginas en 32 marcos, con swap en el home).
-- **Observabilidad:** `dsmctl` verificado contra un nodo en vivo (stats, pages, dir, objects, nodes); panel web implementado y pendiente de verificación en un entorno con cliente HTTP.
+- **Observabilidad:** `dsmctl nodes` verificado contra un nodo en vivo (A.2); `stats`, `pages`, `dir` y `objects` están implementados y documentados en la guía de código. Panel web implementado y pendiente de verificación en un entorno con cliente HTTP.
 - **API estable:** las 6 aplicaciones de prueba (`demo`, `matrices`, `file`, `counter`, `bench`, `evict`) usan `dsm_malloc`/`dsm_free`/`dsm_barrier`/`dsm_stats` sin modificaciones.
 - **Métricas verificables:** latencias, fallos de página, expulsiones y uso de swap.
 - **Reproducible:** `make && ./lab.sh demo|matrices|file|counter|bench|evict|stress` en WSL2 o Linux nativo.
@@ -451,13 +451,19 @@ Durante la prueba de `./lab.sh ip 1 192.0.2.20` la misma consulta mostró el nod
 
 El objeto `stats` incluye todos los campos de `dsm_stats_field_name()`; aquí se muestran solo algunos. Este esquema **no se pudo solicitar** en el entorno de pruebas (Alpine sin `curl`); se transcribe de `dsm_web_render_json()` en `web.c`.
 
-### A.4 `git log --oneline` (historial reciente)
+### A.4 `git log` (historial reciente)
 
 ```
-dead508 feat(entregable-3): prototipo 2 con conexiones persistentes y operación del cluster
-345759f E2: validación en laboratorio + fix warnings GCC 13.3.0
-a1bd33f feat(entregable-2): integra el prototipo 1 y registra la ejecucion de dos nodos
+$ git log --format='%h %an %s'
+25c0c60 Sebastian Aguero docs(entregable-3): corrige inconsistencias y sanea IPs de ejemplo
+c4b6e4d Sebastian Aguero feat(entregable-3): prototipo 2 con conexiones persistentes y operación del cluster
+6b185ee Sebastian Aguero E2: validación en laboratorio + fix warnings GCC 13.3.0
+18339fe Sebastian Aguero feat(entregable-2): integra el prototipo 1 y registra la ejecucion de dos nodos
+87b02ed Monterrosa feat(entregable-2): implementa modulos de config, protocolo, red, log y binarios (parte Monterrosa)
+869c9b4 Sebastian Aguero feat(entregable-2): implementa modulos de memoria, fallos, coherencia y sync (parte Sebastian)
 ```
+
+El historial registra commits de ambos integrantes (Monterrosa en `87b02ed` y Sebastian en el resto); las tareas de cada uno se reparten por módulos en `Entregable_2`.
 
 ### A.5 Captura panel web (descripción)
 

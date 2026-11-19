@@ -2,7 +2,7 @@
 
 > Diseño de un sistema DSM con paginación bajo demanda y coherencia MSI sobre Linux, escrito en C11.
 
-**Estado:** **E3 (Prototipo 2) completado y validado** · probado en WSL2 (4 nodos locales en loopback) · limitaciones conocidas en el [entregable 3](Entregable_3/03_Entregable_3_Prototipo_2.md)
+**Estado:** **E3 (Prototipo 2) completado** · validado en WSL2 con 4 nodos en loopback · E2 validado además en 2 máquinas físicas · pendientes: captura del panel web y corrida de E3 en 2 PCs · limitaciones en el [entregable 3](Entregable_3/03_Entregable_3_Prototipo_2.md)
 **Curso:** IC-6600 Principios de Sistemas Operativos
 **Institución:** Instituto Tecnológico de Costa Rica — Escuela de Ingeniería en Computación
 **Repositorio:** https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida.git
@@ -85,8 +85,30 @@ flowchart LR
 |---|---|---|
 | E1 — Documento de diseño | 6 nov 2026 | ✅ Completado |
 | E2 — Prototipo 1 y arquitectura actualizada | 13 nov 2026 | ✅ **Completado — validado en WSL2 y laboratorio (2 máquinas físicas)** |
-| E3 — Prototipo 2 y arquitectura actualizada | 20 nov 2026 | ✅ **Completado — validado en WSL2 (4 nodos en loopback)** |
+| E3 — Prototipo 2 y arquitectura actualizada | 20 nov 2026 | ✅ **Completado — validado en WSL2 (4 nodos en loopback); pendiente captura web y corrida en 2 PCs** |
 | Entrega final — Demo en vivo | 27 nov 2026 | ⏳ Pendiente |
+
+## Resultados medidos
+
+Datos de corridas ejecutadas y registradas; no son estimaciones.
+
+**Prototipo 2 — 4 procesos en WSL2 (loopback `127.0.0.1`):**
+
+| Prueba | Nodos | Fallos de página | Expulsiones | Swap (home) | Errores / timeouts |
+|---|---|---|---|---|---|
+| `demo` | 2 | 2 / 2 | 0 | 0 | 0 / 0 |
+| `matrices --size 64` | 4 | 18 / 12 / 12 / 12 | 0 | 0 | 0 / 0 |
+| `matrices --size 192` | 4 | 162 / 108 / 108 / 108 | 0 | 0 | 0 / 0 |
+| `file` (1 MB) | 2 | 259 / 129 | 0 | 0 | 0 / 0 |
+| `counter --iters 100 --threads 2` | 2 | 3 / 2 | 0 | 0 | 0 / 0 |
+| `bench` (64 páginas) | 2 | 96 / 96 | 0 | 0 | 0 / 0 |
+| `evict --pages 64 --frames 32` | 2 | 65 / 93 | 123 / 61 | 503 808 B | 0 / 0 |
+
+**Verificación de datos:** `matrices` → `verificacion: OK (0 discrepancias)` · `file` → `checksum completo = 0xc2dc9dc5` · `counter` → `suma = 400, esperado = 400` · `evict` → `(suma 0)`.
+
+**Latencias de `bench`:** lectura local ~0.06 µs · lectura remota 130–280 µs · escritura remota 120–230 µs.
+
+**Prototipo 1 — 2 máquinas físicas (13 nov 2026):** `demo` con fallos de página 2/2, 1 reenvío y 3 barreras.
 
 ## Estructura del repositorio
 
@@ -165,6 +187,37 @@ make
 # http://<host>:27303/        HTML
 # http://<host>:27303/stats.json  JSON
 ```
+
+## Prueba en dos máquinas
+
+Ambas PCs necesitan la misma tabla de nodos y el nodo 1 debe apuntar al home.
+
+```bash
+# En ambas PCs
+cd Entregable_3/prototipo2 && ./lab.sh build
+
+# PC A (nodo 0 / home)
+./lab.sh ip 0 <IP_A>
+./lab.sh ip 1 <IP_B>
+./dsm_node --config config/node0.conf --nodes config/nodes_2.conf --app demo
+
+# PC B (nodo 1)
+./lab.sh ip 0 <IP_A>
+./lab.sh ip 1 <IP_B>
+sed -i 's/^seed_host.*/seed_host = <IP_A>/' config/node1.conf
+./dsm_node --config config/node1.conf --nodes config/nodes_2.conf --app demo
+```
+
+Cambiar `--app demo` por `file`, `counter`, `bench` o `evict --pages 64 --frames 32`. Abrir TCP `27300–27315` en el firewall de cada PC y arrancar primero la PC A.
+
+## Limitaciones conocidas
+
+- `counter` pierde incrementos con contención alta (`--iters 2000 --threads 4` → 8000/16000): el home cede la propiedad copiando su propia copia y las escrituras de sus hilos en esa ventana no viajan al nuevo dueño.
+- `evict` con 4 nodos y 512 páginas produce timeouts de red en el pico de `PAGE_RELEASE`; la configuración estable es 2 nodos con 64 páginas.
+- El panel web está implementado pero no se pudo solicitar en el entorno de pruebas (Alpine sin cliente HTTP).
+- Un solo home (nodo 0) sin replicación: si cae, el clúster deja de servir páginas nuevas.
+
+Detalle completo en [Entregable 3 §11](Entregable_3/03_Entregable_3_Prototipo_2.md).
 
 ## Tecnologías y conceptos
 

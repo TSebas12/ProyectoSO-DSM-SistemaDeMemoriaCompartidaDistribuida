@@ -15,10 +15,11 @@
 | **Entorno** | Linux (C11; confirmado por el profesor) |
 | **Herramientas obligatorias** | Sockets TCP/IP, Pthreads, semáforos POSIX, `mmap`, `mprotect` y manejo de señales con `sigaction` |
 | **Fuente primaria** | `20261027 - Proyecto SO - Sistema DSM.pdf` |
-| **Repositorio Git** | Pendiente de confirmar |
-| **Versión del documento** | 1.6 |
+| **Repositorio Git** | https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida.git |
+| **Versión del documento** | 1.7 |
 | **Fecha de elaboración** | 30 de octubre de 2026 |
-| **Estado** | Documento maestro de referencia; decisiones base confirmadas y pendientes operativos identificados |
+| **Última actualización** | 17 de noviembre de 2026 |
+| **Estado** | Documento maestro de referencia; E1 y E2 entregados, E3 listo para entrega y resultados reales de ambos prototipos incorporados (§13.6) |
 
 ### Control de versiones
 
@@ -31,25 +32,26 @@
 | 1.4 | 30 oct 2026 | Documento general movido a la raíz; carpetas por entregable con instrucciones y estructura documental actualizada. |
 | 1.5 | 30 oct 2026 | Redactado el diseño formal del Entregable 1 en `Entregable_1/01_Entregable_1_Diseno.md`. |
 | 1.6 | 10 nov 2026 | Rango de puertos definitivo de la pareja #3: `27300–27399` (antes `50000–50099`, que era una propuesta a validar). |
+| 1.7 | 17 nov 2026 | Repositorio confirmado; pendientes operativos resueltos; incorporados los resultados reales de E2 (2 máquinas físicas) y E3 (4 nodos en loopback) en §13.6, el estado de cada hito en §14.1 y las decisiones cerradas en §21.1. |
 
 > [!IMPORTANT]
 > **Nota de decisiones pendientes y respuestas temporales**
 >
-> Las siguientes respuestas son **temporales** o están **pendientes de confirmación**. No deben tomarse como definitivas para la Entrega Final.
+> Estado de las respuestas al 17 de noviembre de 2026: las marcadas **Resuelto** ya se validaron en el repositorio y en las pruebas; las **Pendiente** siguen abiertas para la Entrega Final.
 >
 > | Tema | Respuesta actual | Estado | Impacto |
 > |---|---|---|---|
 > | Rango de puertos | **100 puertos**: `27300–27399` | **Confirmado** | Rango asignado a la pareja **#3**. El esquema de offsets se mantiene. |
-> | Equipos del laboratorio | No asignados todavía | **Pendiente** | Afecta pruebas multi-nodo y guion de demo. |
-> | URL del repositorio Git | No entregada todavía | **Pendiente** | Es obligatoria para los entregables. |
-> | Cita de demo | PDF: 27 de noviembre; hora y laboratorio exactos pendientes | **Pendiente** | Afecta planificación final. |
+> | Equipos del laboratorio | 2 máquinas físicas usadas el 13 nov (E2); E3 validado con 4 procesos en loopback | **Resuelto (parcial)** | Falta confirmar 4 equipos para la demo final. |
+> | URL del repositorio Git | https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida.git | **Resuelto** | Repositorio público con E1, E2 y E3. |
+> | Cita de demo | 27 de noviembre de 2026; hora y laboratorio exactos pendientes | **Pendiente** | Afecta planificación final. |
 > | Número de nodos para la demo | **4 nodos ideales**; mínimo 2 | **Confirmado** | Confirmar disponibilidad física en el laboratorio. |
 > | Memoria por nodo | **1 MB configurable** | **Confirmado** | Puede ajustarse por configuración. |
 > | Tamaño de página | **4 KB configurable** | **Confirmado** | Puede ajustarse por configuración. |
 > | Runtime | **Embebido (Modelo A)** | **Confirmado** | No se implementará daemon en la versión base. |
 > | Extras | Intentar ambos si la base queda estable | **Provisional** | Priorizar Extra 1; Extra 2 solo si hay tiempo. |
 > | Web | CLI + web básica | **Confirmado** | Implementar ambos. |
-> | Dataset de las apps | Por definir | **Pendiente** | Matriz y archivo/video concretos. |
+> | Dataset de las apps | Matrices 64×64 y 192×192; archivo sintético de 1 MB (checksum `0xc2dc9dc5`); contador 100×2 y 2000×4 | **Resuelto** | Los datos se generan en el propio código y son reproducibles con `lab.sh`. |
 > | Formato del Entregable 1 | Académico formal: portada, índice, tablas, figuras, Mermaid y referencias | **Confirmado** | Aplicar desde el E1. |
 > | Plantilla o rúbrica adicional | No existe; solo el PDF y las instrucciones del profesor | **Confirmado** | No hay formato externo que seguir. |
 > | Formato del informe final | Un MD final con manual de usuario | **Recomendación** | Confirmar si se separa el manual. |
@@ -1904,18 +1906,46 @@ Preparación:
 - Ensayar la explicación de cada módulo.
 - Preparar respuestas sobre MSI, señales, deadlocks y rendimiento.
 
+### 13.6 Resultados reales medidos
+
+Los datos de esta sección provienen de corridas ejecutadas y registradas en los entregables 2 y 3; no son estimaciones.
+
+**E2 — Prototipo 1, 13 de noviembre de 2026, dos máquinas físicas del laboratorio:**
+
+| Prueba | Nodos | Fallos de página | Reenvíos | Barreras | Errores |
+|---|---|---|---|---|---|
+| `demo` (1 página compartida) | 2 | 2 / 2 | 1 | 3 | 0 |
+
+**E3 — Prototipo 2, 4 procesos en WSL2 (loopback `127.0.0.1`):**
+
+| Prueba | Nodos | Fallos de página | Expulsiones | Swap (home) | Errores / timeouts |
+|---|---|---|---|---|---|
+| `demo` | 2 | 2 / 2 | 0 | 0 | 0 / 0 |
+| `matrices --size 64` | 4 | 18 / 12 / 12 / 12 | 0 | 0 | 0 / 0 |
+| `matrices --size 192` | 4 | 162 / 108 / 108 / 108 | 0 | 0 | 0 / 0 |
+| `file` (1 MB) | 2 | 259 / 129 | 0 | 0 | 0 / 0 |
+| `counter --iters 100 --threads 2` | 2 | 3 / 2 | 0 | 0 | 0 / 0 |
+| `bench` (64 páginas) | 2 | 96 / 96 | 0 | 0 | 0 / 0 |
+| `evict --pages 64 --frames 32` | 2 | 65 / 93 | 123 / 61 | 503 808 B | 0 / 0 |
+
+Verificación de datos: `matrices` cierra con `verificacion: OK (0 discrepancias)`; `file` con `checksum completo = 0xc2dc9dc5`; `counter` con `suma = 400, esperado = 400`; `evict` con `(suma 0)`.
+
+Latencias de `bench` (64 páginas, 32 operaciones por fase, 2 nodos): lectura local ~0.06 µs, lectura remota 130–280 µs, escritura remota 120–230 µs. El throughput derivado es de 15–31 MB/s en lectura remota y 18–34 MB/s en escritura remota.
+
+> **Nota.** El detalle completo, las limitaciones abiertas (pérdida de incrementos de `counter` con 2000×4 e inestabilidad de `evict` con 4 nodos y 512 páginas) y el trabajo pendiente están en `Entregable_3/03_Entregable_3_Prototipo_2.md`, §9 a §12.
+
 ---
 
 ## 14. Entregables
 
 ### 14.1 Calendario oficial
 
-| Fecha | Hito | Contenido del enunciado |
-|---|---|---|
-| **V. 06.Nov.2026** | **Entregable 1** | Documento de Diseño del sistema DSM. Arquitectura general, borrador de API inicial, protocolo de mensajes, datos de configuración. Incluye detalles de implementación: estructuras, tipos de datos, tamaños, etc. |
-| **V. 13.Nov.2026** | **Entregable 2** | Prototipo 1 y Arquitectura actualizada. Primera implementación de la arquitectura inicial propuesta y documentación de los cambios o ajustes realizados a la primera versión. |
-| **V. 20.Nov.2026** | **Entregable 3** | Prototipo 2 y Arquitectura actualizada. Implementación mejorada del prototipo inicial propuesto y documentación de los cambios o ajustes realizados para esta segunda versión. |
-| **V. 27.Nov.2026** | **Entrega Final** | Demo en Vivo en el Laboratorio mediante citas de revisión. |
+| Fecha | Hito | Contenido del enunciado | Estado |
+|---|---|---|---|
+| **V. 06.Nov.2026** | **Entregable 1** | Documento de Diseño del sistema DSM. Arquitectura general, borrador de API inicial, protocolo de mensajes, datos de configuración. Incluye detalles de implementación: estructuras, tipos de datos, tamaños, etc. | ✅ Entregado; documento y PDF público en el repositorio. |
+| **V. 13.Nov.2026** | **Entregable 2** | Prototipo 1 y Arquitectura actualizada. Primera implementación de la arquitectura inicial propuesta y documentación de los cambios o ajustes realizados a la primera versión. | ✅ Entregado; prototipo 1 validado en WSL2 y en 2 máquinas físicas. |
+| **V. 20.Nov.2026** | **Entregable 3** | Prototipo 2 y Arquitectura actualizada. Implementación mejorada del prototipo inicial propuesto y documentación de los cambios o ajustes realizados para esta segunda versión. | ✅ Documento y código listos (17 nov); validado en WSL2 con 4 nodos. |
+| **V. 27.Nov.2026** | **Entrega Final** | Demo en Vivo en el Laboratorio mediante citas de revisión. | ⏳ Pendiente. |
 
 > **Aclaración importante:** el cuarto hito del PDF se llama **“Entrega Final”**, no “Entregable 3”. En el mensaje del usuario aparece como “Entregable 3. Demo en Vivo”; se trata de una numeración informal. Para efectos de planificación se usará: E1, E2, E3 y **Final**. La fecha de la demo es el 27 de noviembre de 2026.
 
@@ -2456,31 +2486,31 @@ Targets sugeridos:
 | D-004 | Extras | **Deseado, condicionado** | Intentar ambos si la base queda estable; priorizar Extra 1 y luego Extra 2. |
 | D-005 | Aplicaciones | **Confirmado** | Matrices + archivo/video; incrementos concurrentes como estrés. |
 | D-006 | Integrantes | **Confirmado** | José Daniel Monterrosa Quirós y Sebastián Aguero Brenes. |
-| D-007 | Repositorio Git | **Pendiente** | URL, ramas y política de commits por confirmar. |
+| D-007 | Repositorio Git | **Confirmado** | https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida.git, rama `main`. |
 | D-008 | Puertos | **Confirmado** | 100 puertos de la pareja #3: `27300–27399`. |
-| D-009 | Equipos del laboratorio | **Pendiente** | Cantidad de máquinas físicas disponibles. |
+| D-009 | Equipos del laboratorio | **Resuelto (parcial)** | 2 máquinas físicas usadas en E2; falta confirmar 4 equipos para la demo final. |
 | D-010 | Web | **Confirmado** | CLI + web básica; un puerto HTTP por nodo. |
 | D-011 | Tamaño de página | **Confirmado** | 4 KB por defecto, configurable. |
 | D-012 | Memoria por nodo | **Confirmado** | 1 MB por defecto, configurable. |
 | D-013 | Nodos para demo | **Confirmado** | Ideal 4 nodos; mínimo 2. |
 | D-014 | Formato de entregables | **Confirmado** | Académico formal: portada, índice, tablas, figuras, Mermaid, referencias y fragmentos de código. |
 | D-015 | Idioma | **Confirmado** | Español. |
-| D-016 | Fecha de demo | **Según PDF** | 27 de noviembre de 2026; citas exactas pendientes. |
+| D-016 | Fecha de demo | **Confirmado (fecha)** | 27 de noviembre de 2026; hora y laboratorio por confirmar. |
 | D-017 | Plantilla o rúbrica adicional | **Confirmado** | No existe; solo el PDF y las instrucciones del profesor. |
 | D-018 | Informe final | **Pendiente** | Un MD final con sección de manual de usuario; confirmar si se separa. |
-| D-019 | Dataset de las apps | **Pendiente** | Matriz y archivo/video concretos por definir. |
+| D-019 | Dataset de las apps | **Confirmado** | Matrices 64×64/192×192, archivo sintético de 1 MB, contador 100×2 y 2000×4. |
 
 ### 21.2 Preguntas que siguen abiertas
 
-1. **Equipos del laboratorio:** ¿cuántas máquinas físicas habrá disponibles para la demo? Se quieren 4 nodos ideales.
-2. **Nodos en una misma máquina:** si no hay 4 equipos, ¿se permite simular 4 nodos con 4 procesos y puertos distintos en menos máquinas?
-3. **Extras:** ¿ambos desde el E3 o solo el Extra 1? ¿Hay tiempo real para el Extra 2?
-4. **Git:** URL del repositorio y nombres de usuario de ambos integrantes.
-5. **Demo:** fecha/hora de cita y laboratorio exacto.
-6. **Dataset:** ¿se usará un video/matriz real específico o se generará uno?
-7. **Informe final:** ¿manual de usuario separado o dentro del mismo MD?
-8. **Web:** ya está confirmada; falta definir estilo visual y si se quiere refresco automático.
-9. **Puertos:** verificar que `27300–27399` (pareja #3) esté libre en la red del laboratorio antes de la demo.
+1. ⏳ **Equipos del laboratorio:** confirmar cuántas máquinas físicas habrá para la demo; se quieren 4 nodos ideales.
+2. ✅ **Nodos en una misma máquina:** resuelto en la práctica; E3 se validó con 4 procesos y puertos distintos en WSL2.
+3. ⏳ **Extras:** decidir si se intenta el Extra 1 en la entrega final; el Extra 2 queda condicionado al tiempo.
+4. ✅ **Git:** repositorio definido y público; ambos integrantes aparecen en el historial.
+5. ⏳ **Demo:** falta confirmar hora y laboratorio exactos de la cita del 27 de noviembre.
+6. ✅ **Dataset:** definido (matrices 64×64/192×192, archivo sintético de 1 MB, contador 100×2 y 2000×4).
+7. ⏳ **Informe final:** decidir si el manual de usuario va separado o dentro del mismo MD.
+8. ⏳ **Web:** definir estilo visual y refresco automático; falta capturar el panel en un entorno con cliente HTTP.
+9. ⏳ **Puertos:** verificar que `27300–27399` (pareja #3) esté libre en la red del laboratorio antes de la demo.
 
 ### 21.3 Decisiones que no deben cambiarse a la ligera
 
