@@ -2509,7 +2509,7 @@ Targets sugeridos:
 | D-006 | Integrantes | **Confirmado** | José Daniel Monterrosa Quirós y Sebastián Aguero Brenes. |
 | D-007 | Repositorio Git | **Confirmado** | https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida.git, rama `main`. |
 | D-008 | Puertos | **Confirmado** | 100 puertos de la pareja #3: `27300–27399`. |
-| D-009 | Equipos del laboratorio | **Resuelto (parcial)** | 2 máquinas físicas usadas en E2; falta confirmar 4 equipos para la demo final. |
+| D-009 | Equipos del laboratorio | **Resuelto (parcial)** | 2 PCs usadas en E2 y en E3 (laboratorio, 19 nov); 4 equipos pendientes para la demo final. |
 | D-010 | Web | **Confirmado** | CLI + web básica; un puerto HTTP por nodo. |
 | D-011 | Tamaño de página | **Confirmado** | 4 KB por defecto, configurable. |
 | D-012 | Memoria por nodo | **Confirmado** | 1 MB por defecto, configurable. |
@@ -2518,18 +2518,18 @@ Targets sugeridos:
 | D-015 | Idioma | **Confirmado** | Español. |
 | D-016 | Fecha de demo | **Confirmado (fecha)** | 27 de noviembre de 2026; hora y laboratorio por confirmar. |
 | D-017 | Plantilla o rúbrica adicional | **Confirmado** | No existe; solo el PDF y las instrucciones del profesor. |
-| D-018 | Informe final | **Pendiente** | Un MD final con sección de manual de usuario; confirmar si se separa. |
+| D-018 | Manual de usuario | **Resuelto** | Creado como `Entregable_3/04_Manual_Usuario.md` (documento separado, E3). |
 | D-019 | Dataset de las apps | **Confirmado** | Matrices 64×64/192×192, archivo sintético de 1 MB, contador 100×2 y 2000×4. |
 
 ### 21.2 Preguntas que siguen abiertas
 
-1. ⏳ **Equipos del laboratorio:** confirmar cuántas máquinas físicas habrá para la demo; se quieren 4 nodos ideales.
+1. ⏳ **Equipos del laboratorio:** 2 PCs usadas en E2 y E3; confirmar 4 equipos para la demo final (27 nov).
 2. ✅ **Nodos en una misma máquina:** resuelto en la práctica; E3 se validó con 4 procesos y puertos distintos en WSL2.
 3. ⏳ **Extras:** decidir si se intenta el Extra 1 en la entrega final; el Extra 2 queda condicionado al tiempo.
 4. ✅ **Git:** repositorio definido y público; ambos integrantes aparecen en el historial.
 5. ⏳ **Demo:** falta confirmar hora y laboratorio exactos de la cita del 27 de noviembre.
 6. ✅ **Dataset:** definido (matrices 64×64/192×192, archivo sintético de 1 MB, contador 100×2 y 2000×4).
-7. ⏳ **Informe final:** decidir si el manual de usuario va separado o dentro del mismo MD.
+7. ✅ **Manual de usuario:** resuelto como documento separado (`Entregable_3/04_Manual_Usuario.md`).
 8. ⏳ **Web:** definir estilo visual y refresco automático; falta capturar el panel en un entorno con cliente HTTP.
 9. ⏳ **Puertos:** verificar que `27300–27399` (pareja #3) esté libre en la red del laboratorio antes de la demo.
 

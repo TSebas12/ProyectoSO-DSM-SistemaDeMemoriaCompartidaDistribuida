@@ -62,7 +62,12 @@ int dsm_app_matrices_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
             }
         }
     }
-    (void)dsm_barrier(rt, APP_BARRIER_MS);
+    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
+        fprintf(stderr, "nodo %u: matrices: fallo la barrera 'inicializacion de A y B'. "
+                        "Arranca los dos nodos con menos de 2 minutos de diferencia.\\n",
+                rank);
+        return 1;
+    }
 
     start = dsm_app_split_start(n, nodes, rank);
     count = dsm_app_split_count(n, nodes, rank);
@@ -79,7 +84,12 @@ int dsm_app_matrices_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         }
     }
     t1 = dsm_app_now_us();
-    (void)dsm_barrier(rt, APP_BARRIER_MS);
+    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
+        fprintf(stderr, "nodo %u: matrices: fallo la barrera 'fin del calculo'. "
+                        "Arranca los dos nodos con menos de 2 minutos de diferencia.\\n",
+                rank);
+        return 1;
+    }
 
     printf("nodo %u: matrices %ux%u, filas %llu..%llu, %.2f ms\n",
            rank, n, n, (unsigned long long)start,

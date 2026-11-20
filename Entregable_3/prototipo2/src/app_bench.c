@@ -81,7 +81,12 @@ int dsm_app_bench_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
             memset(buf + (size_t)i * page_size, (int)(rank + 1u), page_size);
         }
     }
-    (void)dsm_barrier(rt, APP_BARRIER_MS);
+    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
+        fprintf(stderr, "nodo %u: bench: fallo la barrera 'distribucion inicial'. "
+                        "Arranca los dos nodos con menos de 2 minutos de diferencia.\\n",
+                rank);
+        return 1;
+    }
 
     /* Fase 1: lectura local de las páginas propias.                      */
     t0 = dsm_app_now_us();
@@ -91,7 +96,8 @@ int dsm_app_bench_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         sink += buf[(size_t)p * page_size + (i % page_size)];
     }
     t1 = dsm_app_now_us();
-    print_rate("lectura local", rank, iters, t1 - t0, 0);
+    print_rate("lectura local", rank, iters, t1 - t0,
+               (uint64_t)iters * (uint64_t)page_size);
 
     /* Fase 2: lectura de las páginas del nodo siguiente.                 */
     t0 = dsm_app_now_us();
@@ -101,7 +107,8 @@ int dsm_app_bench_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         sink += buf[(size_t)p * page_size + (i % page_size)];
     }
     t1 = dsm_app_now_us();
-    print_rate("lectura remota", rank, iters, t1 - t0, 0);
+    print_rate("lectura remota", rank, iters, t1 - t0,
+               (uint64_t)iters * (uint64_t)page_size);
 
     /* Fase 3: escritura de las páginas del nodo siguiente.               */
     t0 = dsm_app_now_us();
@@ -114,7 +121,12 @@ int dsm_app_bench_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
     print_rate("escritura remota", rank, iters, t1 - t0,
                (uint64_t)iters * (uint64_t)page_size);
 
-    (void)dsm_barrier(rt, APP_BARRIER_MS);
+    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
+        fprintf(stderr, "nodo %u: bench: fallo la barrera 'fin de las fases'. "
+                        "Arranca los dos nodos con menos de 2 minutos de diferencia.\n",
+                rank);
+        return 1;
+    }
     printf("nodo %u: bench: %u paginas, %u operaciones por fase (suma %llu)\n",
            rank, pages, iters, (unsigned long long)sink);
     return 0;

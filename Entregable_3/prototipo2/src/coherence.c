@@ -478,8 +478,24 @@ static dsm_status_t local_install(dsm_coherence_t *co, uint64_t page_id,
 static void local_drop(dsm_coherence_t *co, uint64_t page_id)
 {
     dsm_page_entry_t *p = dsm_memory_page_lookup(co->mem, page_id);
+    uint32_t          waited = 0;
 
     if (p == NULL || dsm_mutex_lock(&p->lock) != DSM_OK) {
+        return;
+    }
+    /* Si la página está en FETCHING/EVICTING, esperar a que termine.       */
+    while ((p->meta.residency == (uint8_t)DSM_RES_FETCHING ||
+            p->meta.residency == (uint8_t)DSM_RES_EVICTING) &&
+           waited < 200u) {
+        dsm_cond_timedwait(&p->cond, &p->lock, 5u);
+        waited += 5u;
+    }
+    if (p->meta.residency == (uint8_t)DSM_RES_FETCHING ||
+        p->meta.residency == (uint8_t)DSM_RES_EVICTING) {
+        DSM_LOG(DSM_LOG_WARN,
+                "local_drop: se salta la pagina %llu (residency=%d)",
+                (unsigned long long)page_id, (int)p->meta.residency);
+        dsm_mutex_unlock(&p->lock);
         return;
     }
     if (p->meta.residency == (uint8_t)DSM_RES_RESIDENT) {
@@ -492,6 +508,15 @@ static void local_drop(dsm_coherence_t *co, uint64_t page_id)
             dsm_memory_release_frame(co->mem, p->meta.frame_slot);
             p->meta.frame_slot = DSM_INVALID_FRAME;
         }
+    } else if (p->meta.frame_slot != DSM_INVALID_FRAME) {
+        /* Residual: liberar marco aunque no esté residente.               */
+        dsm_memory_release_frame(co->mem, p->meta.frame_slot);
+        p->meta.frame_slot = DSM_INVALID_FRAME;
+        p->meta.msi_state  = (uint8_t)DSM_PAGE_I;
+        p->meta.residency  = (uint8_t)DSM_RES_NOT_RESIDENT;
+        p->meta.is_dirty   = 0;
+        p->meta.version++;
+        dsm_memory_protect(co->mem, page_id, DSM_PAGE_I);
     }
     dsm_mutex_unlock(&p->lock);
 }

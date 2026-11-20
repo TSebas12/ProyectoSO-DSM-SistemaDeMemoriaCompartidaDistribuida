@@ -169,23 +169,30 @@ ProyectoSO/
 - [Entregable 2 — Guía del código](Entregable_2/02_Entregable_2_Guia_Codigo.md)
 - [Entregable 3 — Prototipo 2](Entregable_3/03_Entregable_3_Prototipo_2.md)
 - [Entregable 3 — Guía del código](Entregable_3/03_Entregable_3_Guia_Codigo.md)
+- [Entregable 3 — Manual de usuario](Entregable_3/04_Manual_Usuario.md)
 - [Instrucciones del Entregable 1](Entregable_1/INSTRUCCIONES.md)
 - [Instrucciones del Entregable 2](Entregable_2/INSTRUCCIONES.md)
 - [Instrucciones del Entregable 3](Entregable_3/INSTRUCCIONES.md)
 - [Instrucciones de la Entrega Final](Entrega_Final/INSTRUCCIONES.md)
 
-## Inicio rápido (WSL2 o Linux nativo)
+## Inicio rápido
+
+La forma principal de operar el prototipo 2 es el menú interactivo `./dsm.sh`
+(recomendado para el laboratorio y para dos máquinas). `lab.sh` queda como
+alternativa para WSL/loopback sin menú.
 
 ```bash
 # Clonar
 git clone https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida.git
 cd ProyectoSO/Entregable_3/prototipo2
 
-# Compilar
-make
-# o: ./lab.sh build
+# Forma principal: menú interactivo (IPs, rol, build, arranque, apps, control,
+# logs, parada y diagnóstico de red)
+chmod +x dsm.sh
+./dsm.sh
 
-# Probar (loopback 127.0.0.1; matrices usa 4 nodos, el resto 2)
+# Alternativa para WSL/loopback (sin menú)
+make
 ./lab.sh demo          # demo de 1 página + 3 barreras
 ./lab.sh matrices --size 64
 ./lab.sh file          # 1 MB, checksum por bloques
@@ -194,7 +201,7 @@ make
 ./lab.sh evict         # presión de memoria + swap (64 páginas, 32 marcos)
 ./lab.sh stress        # matrices 192 + counter 100×2
 
-# Control y diagnóstico
+# Control y diagnóstico (lab.sh)
 ./lab.sh serve 0       # nodo 0 abierto (Ctrl+C para salir)
 ./lab.sh ctl 0 stats   # contadores
 ./lab.sh ctl 0 pages   # páginas locales
