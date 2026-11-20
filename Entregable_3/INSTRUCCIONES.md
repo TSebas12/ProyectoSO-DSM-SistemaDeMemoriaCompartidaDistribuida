@@ -150,21 +150,22 @@ Deseable:
 
 ## 7. Checklist de entrega
 
-- [ ] Documento Markdown del prototipo 2.
-- [ ] Arquitectura actualizada.
-- [ ] Cambios respecto al prototipo 1.
-- [ ] Código fuente.
-- [ ] `Makefile`.
-- [ ] `README`.
-- [ ] Configuración.
-- [ ] Aplicaciones de prueba.
-- [ ] Pruebas de estrés.
-- [ ] Métricas.
-- [ ] Evidencia.
-- [ ] Limitaciones.
-- [ ] Trabajo pendiente.
-- [ ] Repositorio Git.
-- [ ] Commits de ambos integrantes.
+- [x] Documento Markdown del prototipo 2 (`03_Entregable_3_Prototipo_2.md`).
+- [x] Arquitectura actualizada (§5 y §6 del documento).
+- [x] Cambios respecto al prototipo 1 (§6 y §7).
+- [x] Código fuente (`prototipo2/`: 25 módulos, 18 cabeceras).
+- [x] `Makefile`.
+- [x] `README` actualizado (menú `./dsm.sh` como forma principal).
+- [x] Configuración (`node0.conf`..`node3.conf`, `nodes.conf`, `nodes_2.conf`).
+- [x] Aplicaciones de prueba (demo, file, counter, bench, evict, matrices).
+- [x] Pruebas de estrés (WSL2 4 nodos + 2 PCs del laboratorio).
+- [x] Métricas (§9 y §10 del documento; tabla de README).
+- [ ] Evidencia (capturas de CLI/web aún pendientes; no inventarlas).
+- [x] Limitaciones documentadas (§11).
+- [x] Trabajo pendiente (§12, actualizado).
+- [x] Repositorio Git actualizado.
+- [x] Commits de ambos integrantes.
+- [x] Interfaz de operación en laboratorio: `dsm.sh` (menú interactivo, liberación real de puertos, diagnóstico con PID/proceso).
 
 ---
 

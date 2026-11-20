@@ -364,7 +364,7 @@ static dsm_status_t rpc(dsm_net_t *net, uint32_t dst, const dsm_msg_t *req,
         if (net->stats != NULL) {
             if (st == DSM_ERR_TIMEOUT) {
                 dsm_stats_inc(net->stats, DSM_STAT_TIMEOUTS);
-            } else {
+            } else if (st != DSM_ERR_PEER_DOWN) {
                 dsm_stats_inc(net->stats, DSM_STAT_ERRORS);
             }
             if (attempt + 1u < max_attempts) {

@@ -28,7 +28,7 @@ struct dsm_heartbeat {
     pthread_t      thread;
     _Atomic int    running;
     int            started;
-    int            alive[DSM_MAX_PEERS];
+    _Atomic int    alive[DSM_MAX_PEERS];
     uint64_t       last_seen_ms[DSM_MAX_PEERS];
 };
 
@@ -72,10 +72,10 @@ static void *heartbeat_loop(void *arg)
             }
             st = dsm_net_ping(rt->net, i, rt->cfg.heartbeat_timeout_ms);
             if (st == DSM_OK) {
-                hb->alive[i]        = 1;
+                atomic_store_explicit(&hb->alive[i], 1, memory_order_relaxed);
                 hb->last_seen_ms[i] = dsm_now_ms();
             } else {
-                hb->alive[i] = 0;
+                atomic_store_explicit(&hb->alive[i], 0, memory_order_relaxed);
             }
         }
     }
@@ -97,7 +97,8 @@ dsm_heartbeat_t *dsm_heartbeat_start(dsm_runtime_t *rt)
     hb->rt = rt;
     atomic_init(&hb->running, 0);
     for (i = 0; i < DSM_MAX_PEERS; i++) {
-        hb->alive[i]        = (i == rt->cfg.node_id) ? 1 : 0;
+        atomic_store_explicit(&hb->alive[i], (i == rt->cfg.node_id) ? 1 : 0,
+                              memory_order_relaxed);
         hb->last_seen_ms[i] = UINT64_MAX;
     }
     hb->last_seen_ms[rt->cfg.node_id] = dsm_now_ms();
@@ -130,7 +131,7 @@ int dsm_heartbeat_alive(dsm_heartbeat_t *hb, uint32_t node_id)
     if (hb == NULL || node_id >= DSM_MAX_PEERS) {
         return 0;
     }
-    return hb->alive[node_id];
+    return atomic_load_explicit(&hb->alive[node_id], memory_order_relaxed);
 }
 
 uint64_t dsm_heartbeat_last_seen(dsm_heartbeat_t *hb, uint32_t node_id)
@@ -167,11 +168,11 @@ int dsm_heartbeat_format(dsm_heartbeat_t *hb, char *out, size_t len)
         if (hb->last_seen_ms[i] == UINT64_MAX) {
             n = snprintf(out + used, len - used, "%-5u %-16s %-6s %s\n",
                          p->node_id, p->host,
-                         hb->alive[i] ? "vivo" : "sin respuesta", "nunca");
+                         atomic_load_explicit(&hb->alive[i], memory_order_relaxed) ? "vivo" : "sin respuesta", "nunca");
         } else {
             n = snprintf(out + used, len - used, "%-5u %-16s %-6s %llu ms\n",
                          p->node_id, p->host,
-                         hb->alive[i] ? "vivo" : "sin respuesta",
+                         atomic_load_explicit(&hb->alive[i], memory_order_relaxed) ? "vivo" : "sin respuesta",
                          (unsigned long long)(now - hb->last_seen_ms[i]));
         }
         if (n < 0 || (size_t)n >= len - used) {

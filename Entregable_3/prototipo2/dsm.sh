@@ -38,6 +38,8 @@ cfg_for_role() {
     case "${ROLE:-}" in
         A) echo "config/node0.conf" ;;
         B) echo "config/node1.conf" ;;
+        C) echo "config/node2.conf" ;;
+        D) echo "config/node3.conf" ;;
         *) return 1 ;;
     esac
 }
@@ -46,6 +48,8 @@ port_for_role() {
     case "${ROLE:-}" in
         A) echo 27300 ;;
         B) echo 27304 ;;
+        C) echo 27308 ;;
+        D) echo 27312 ;;
         *) return 1 ;;
     esac
 }
@@ -124,10 +128,14 @@ do_role() {
     echo "Rol de ESTA máquina:"
     echo "  A) home / nodo 0"
     echo "  B) cliente / nodo 1"
-    read -r -p "  Opción [A/B]: " r
+    echo "  C) cliente / nodo 2"
+    echo "  D) cliente / nodo 3"
+    read -r -p "  Opción [A/B/C/D]: " r
     case "$r" in
         A|a) ROLE="A" ;;
         B|b) ROLE="B" ;;
+        C|c) ROLE="C" ;;
+        D|d) ROLE="D" ;;
         *) echo "Opción inválida."; return 1 ;;
     esac
     save_state
@@ -176,18 +184,42 @@ EOF
 }
 
 kill_leftovers() {
-    pkill -f 'dsm_node --config' 2>/dev/null || true
-    sleep 1
+    local pids
+
+    # 1. SIGTERM a todos los dsm_node.
+    pids=$(pgrep -f '[d]sm_node' 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+        kill $pids 2>/dev/null || true
+        sleep 2
+    fi
+    # 2. SIGKILL a los que sigan vivos (procesos trabados, sudo, etc.).
+    pids=$(pgrep -f '[d]sm_node' 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+        kill -9 $pids 2>/dev/null || true
+        sleep 1
+    fi
 }
 
 check_port_free() {
-    local port
-    port="$(port_for_role)" || return 1
-    if ss -ltn 2>/dev/null | grep -q ":$port "; then
-        echo "ERROR: el puerto $port ya está ocupado."
-        echo "       Cerrá el nodo anterior (opción 8) y reintentá."
-        return 1
-    fi
+    local ports p
+
+    # Los 4 puertos del rol (listen/control/heartbeat/web).
+    case "${ROLE:-}" in
+        A) ports="27300 27301 27302 27303" ;;
+        B) ports="27304 27305 27306 27307" ;;
+        C) ports="27308 27309 27310 27311" ;;
+        D) ports="27312 27313 27314 27315" ;;
+        *) return 1 ;;
+    esac
+
+    for p in $ports; do
+        if ss -ltn 2>/dev/null | grep -q ":$p "; then
+            echo "ERROR: el puerto $p ya está ocupado."
+            echo "       Cerrá el nodo anterior (opción 8) o libéralo con la opción 10."
+            ss -ltnp 2>/dev/null | grep ":$p " || true
+            return 1
+        fi
+    done
     return 0
 }
 
@@ -289,9 +321,36 @@ do_log() {
 }
 
 do_stop() {
+    local port
+    port="$(port_for_role 2>/dev/null)" || port=""
     echo
     kill_leftovers
-    echo "Nodos detenidos."
+    if [ -n "$port" ] && ss -ltn 2>/dev/null | grep -q ":$port "; then
+        echo "ERROR: el puerto $port sigue ocupado:"
+        ss -ltnp 2>/dev/null | grep ":$port " || true
+        echo "Matá el proceso con: sudo kill -9 <PID>"
+        return 1
+    fi
+    echo "Nodos detenidos; puerto ${port:-?} libre."
+}
+
+do_force() {
+    local pids
+
+    echo
+    echo "Forzando liberación de puertos (SIGKILL)..."
+    pids=$(pgrep -f '[d]sm_node' 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+        kill -9 $pids 2>/dev/null || true
+    fi
+    sleep 1
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k 27300/tcp 27301/tcp 27302/tcp 27303/tcp \
+              27304/tcp 27305/tcp 27306/tcp 27307/tcp \
+              27308/tcp 27309/tcp 27310/tcp 27311/tcp \
+              27312/tcp 27313/tcp 27314/tcp 27315/tcp 2>/dev/null || true
+    fi
+    echo "Listo. Verifica con la opción 9."
 }
 
 do_diag() {
@@ -306,8 +365,8 @@ do_diag() {
     echo "--- procesos dsm_node ---"
     pgrep -af dsm_node || echo "(ninguno)"
     echo
-    echo "--- puertos 27300-27315 escuchando ---"
-    ss -ltn 2>/dev/null | grep -E ':273(0[0-9]|1[0-5]) ' || echo "(ninguno)"
+    echo "--- puertos 27300-27315 escuchando (con PID/proceso) ---"
+    ss -ltnp 2>/dev/null | grep -E ':273(0[0-9]|1[0-5]) ' || echo "(ninguno)"
     echo
     if [ -n "$peer" ]; then
         echo "--- alcance a la otra máquina ($peer) ---"
@@ -351,6 +410,7 @@ menu() {
     echo "  7) Ver log de este nodo"
     echo "  8) Detener nodos"
     echo "  9) Diagnóstico de red"
+    echo " 10) Forzar liberación de puertos (SIGKILL)"
     echo "  0) Salir"
     echo "--------------------------------------------------------------"
 }
@@ -370,6 +430,7 @@ while true; do
         7) do_log ;;
         8) do_stop ;;
         9) do_diag ;;
+       10) do_force ;;
         0) exit 0 ;;
         *) echo "Opción inválida." ;;
     esac

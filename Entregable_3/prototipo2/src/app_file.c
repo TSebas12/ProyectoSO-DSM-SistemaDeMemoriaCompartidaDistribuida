@@ -74,7 +74,12 @@ int dsm_app_file_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
                    (unsigned long long)size);
         }
     }
-    (void)dsm_barrier(rt, APP_BARRIER_MS);
+    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
+        fprintf(stderr, "nodo %u: file: fallo la barrera 'carga del archivo'. "
+                        "Arranca los dos nodos con menos de 2 minutos de diferencia.\\n",
+                rank);
+        return 1;
+    }
 
     start = dsm_app_split_start(size, nodes, rank);
     count = dsm_app_split_count(size, nodes, rank);
@@ -83,7 +88,12 @@ int dsm_app_file_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
      * compartidos. */
     ((uint64_t *)partial)[rank] = (uint64_t)local_hash;
 
-    (void)dsm_barrier(rt, APP_BARRIER_MS);
+    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
+        fprintf(stderr, "nodo %u: file: fallo la barrera 'checksum'. "
+                        "Arranca los dos nodos con menos de 2 minutos de diferencia.\\n",
+                rank);
+        return 1;
+    }
 
     if (rank == 0) {
         uint64_t total_ok = 1;

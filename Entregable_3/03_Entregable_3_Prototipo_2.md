@@ -248,6 +248,8 @@ Cada nodo ejecuta:
 
 **Adaptación al API:** Todas usan `dsm_malloc`/`dsm_free`/`dsm_barrier`/`dsm_stats`. `dsm_app_opts_default` define `size=0` y `pages=0` → cada app elige su tamaño.
 
+**Operación:** En el laboratorio las aplicaciones se lanzan desde `./dsm.sh` (opción 5); en WSL/loopback se usan los subcomandos equivalentes de `lab.sh`. La barrera de cada app espera como máximo `APP_BARRIER_MS` (60 s) y falla con mensaje claro si un nodo arranca tarde.
+
 ---
 
 ## 9. Pruebas de estrés
@@ -363,17 +365,22 @@ La lectura local es un acceso a memoria normal (la página ya está en `S`/`M`);
 
 ## 12. Trabajo pendiente para la entrega final
 
+Resuelto en esta etapa:
+
+- [x] **Pruebas en 2 máquinas físicas:** Validado en 2 PCs del laboratorio (Linux Mint 22.3), seis aplicaciones ejecutadas sobre A (`172.19.13.67`) y B (`172.19.13.32`) con `nodes_2.conf`.
+- [x] **Interfaz de operación en laboratorio:** `./dsm.sh` (menú interactivo, configuración de IPs/rol, build, arranque, apps, control, logs, parada y diagnóstico de red con PID/proceso).
+
+Abierto (entrega final):
+
 - [ ] **Tolerancia a fallo de home:** Elección automática (Raft/etcd) o réplica caliente del directorio.
 - [ ] **Replicación configurable:** `replication_factor > 0` → copias en N nodos; lectura local si réplica disponible.
 - [ ] **Checkpointing periódico:** Volcado de páginas sucias a disco para recuperación rápida.
-- [ ] **Optimizaciones de red:** Agrupación de invalidaciones (`INVALIDATE_BATCH`), prefetch de páginas adyacentes, pipeline de RPC.
-- [ ] **Panel web enriquecido:** Gráficos en tiempo real (Chart.js), histórico de métricas, acciones (forzar expulsión, limpiar swap).
-- [ ] **Corregir `counter` con alta contención:** asignar una página de 4 KB por nodo (ranuras en `page_base + rank * page_size`) para que cada nodo escriba solo su página; además, revisar la cesión de propiedad del home (copiar bajo protección de escritura antes de soltar la copia). Luego volver a `--iters 2000 --threads 4` y verificar el total exacto.
-- [ ] **Estabilizar `evict` de 4 nodos con 512 páginas:** revisar el backlog de `accept`, añadir reconexión en segundo plano o limitar la ráfaga de `PAGE_RELEASE`.
-- [ ] **Pruebas en 2+ máquinas físicas:** Validar latencias reales de red (no loopback) y `./lab.sh ip N IP`.
-- [ ] **Benchmark comparativo:** Speedup vs. memoria local, vs. MPI, vs. socket crudo.
-- [ ] **Documentación de API pública:** Man pages / Doxygen para `dsm_malloc`, `dsm_free`, `dsm_barrier`, `dsm_stats`, `dsm_attach`, `dsm_detach`.
-- [ ] **Limpieza de código:** Unificar macros de error y revisar `_Atomic` vs mutex en `stats`.
+- [ ] **Deuda técnica (tarea 8):**
+  - `counter --iters 2000 --threads 4` pierde incrementos con alta contención (cesión de propiedad del home).
+  - `evict` con 4 nodos y 512 páginas da timeouts en `PAGE_RELEASE` (configuración estable: 2 nodos / 64 páginas).
+  - Unificar macros de error y revisar `_Atomic` vs mutex en `stats` (§12).
+
+Otros refinamientos (optimizaciones de red, panel web enriquecido, benchmark comparativo, documentación de API pública) se evalúan en la entrega final.
 
 ---
 
@@ -387,7 +394,7 @@ El **Prototipo 2** cumple y supera los requisitos mínimos del enunciado:
 - **Observabilidad:** `dsmctl nodes` verificado contra un nodo en vivo (A.2); `stats`, `pages`, `dir` y `objects` están implementados y documentados en la guía de código. Panel web implementado y pendiente de verificación en un entorno con cliente HTTP.
 - **API estable:** las 6 aplicaciones de prueba (`demo`, `matrices`, `file`, `counter`, `bench`, `evict`) usan `dsm_malloc`/`dsm_free`/`dsm_barrier`/`dsm_stats` sin modificaciones.
 - **Métricas verificables:** latencias, fallos de página, expulsiones y uso de swap.
-- **Reproducible:** `make && ./lab.sh demo|matrices|file|counter|bench|evict|stress` en WSL2 o Linux nativo.
+- **Reproducible:** en WSL2/Linux nativo, `make && ./lab.sh demo|matrices|file|counter|bench|evict|stress`; en el laboratorio, `./dsm.sh` (opciones 1 a 5).
 
 La arquitectura está lista para las mejoras de la entrega final (tolerancia a fallos, replicación, checkpointing, optimizaciones de red). El repositorio Git registra commits de ambos integrantes y el historial de evolución desde E1.
 
