@@ -37,7 +37,7 @@ Este documento describe el **Prototipo 2** del DSM distribuido para IC-6600. El 
 - **Observabilidad:** `dsmctl` (texto sobre TCP) y panel web (`/`, `/stats.json`) exponen estadísticas, páginas, directorio, objetos y nodos.
 - **Scripts de operación:** `lab.sh` unifica build, demo, apps, control, IP, show, stop en comandos cortos.
 
-**Validación:** en WSL2 (Alpine) con 4 procesos locales sobre `127.0.0.1`. `matrices` (64×64 y 192×192) corre con 4 nodos; `demo`, `file`, `counter`, `bench` y `evict` corren con la tabla reducida `nodes_2.conf` (2 nodos), que es la configuración estable. Todos terminan con 0 errores y 0 timeouts. Métricas de latencia: lectura local ~0.06 µs, lectura remota ~130–280 µs, escritura remota ~120–230 µs. Además se ejecutó en **2 PCs físicas del laboratorio** (A `192.0.2.10`, B `192.0.2.11`) con las seis aplicaciones sobre `nodes_2.conf`; el detalle está en §9.3.1. Las limitaciones que quedan abiertas se detallan en §11.
+**Validación:** en WSL2 (Alpine) con 4 procesos locales sobre `127.0.0.1`. `matrices` (64×64 y 192×192) corre con 4 nodos; `demo`, `file`, `counter`, `bench` y `evict` corren con la tabla reducida `nodes_2.conf` (2 nodos), que es la configuración estable. Todos terminan con 0 errores y 0 timeouts. Métricas de latencia: lectura local ~0.06 µs, lectura remota ~130–280 µs, escritura remota ~120–230 µs. Además se ejecutó en **2 PCs físicas del laboratorio** (A home `192.0.2.10`, B cliente `192.0.2.11`, direcciones de ejemplo) con las seis aplicaciones sobre `nodes_2.conf`; el detalle está en §9.3.1. Las limitaciones que quedan abiertas se detallan en §11.
 
 ---
 
@@ -116,7 +116,7 @@ Cada nodo ejecuta:
 ### 5.2 Diagrama de despliegue
 
 - **Máquina única (desarrollo/WSL):** 4 procesos `dsm_node` en los puertos 27300/27304/27308/27312, todos en `127.0.0.1`. `nodes.conf` declara los 4 endpoints y lo usan `matrices` y `serve`; `nodes_2.conf` declara solo los nodos 0 y 1 y lo usan `demo`, `file`, `counter`, `bench` y `evict`. La barrera cuenta los nodos del archivo que se pasa con `--nodes`.
-- **Dos máquinas (validado en el laboratorio, 19 nov 2026):** nodo 0 (home) en `192.0.2.10:27300` y nodo 1 en `192.0.2.11:27304`. Las dos PCs usan la misma tabla `nodes_2.conf` y el `seed_host` del nodo 1 apunta a A; `./dsm.sh` (opciones 1 a 3) deja esa configuración sin editar archivos a mano.
+- **Dos máquinas (validado en el laboratorio, 19 nov 2026):** nodo 0 (home) en `192.0.2.10:27300` y nodo 1 en `192.0.2.11:27304` (direcciones de ejemplo). Las dos PCs usan la misma tabla `nodes_2.conf` y el `seed_host` del nodo 1 apunta a A; `./dsm.sh` (opciones 1 a 3) deja esa configuración sin editar archivos a mano.
 - **Cuatro máquinas:** Análogo, una línea por nodo en `nodes.conf`.
 
 ### 5.3 Cambios respecto al prototipo 1
@@ -286,7 +286,7 @@ Cada nodo ejecuta:
 | PC A | home / nodo 0 | `192.0.2.10` | 27300–27303 |
 | PC B | cliente / nodo 1 | `192.0.2.11` | 27304–27307 |
 
-Las dos con Linux Mint 22.3, `nodes_2.conf` con las dos direcciones y el `seed_host` del nodo 1 apuntando a A. A se arrancó primero y B dentro de los 2 minutos siguientes. Las seis aplicaciones se lanzaron desde el menú `./dsm.sh` (opción 5).
+Las dos con Linux Mint 22.3, `nodes_2.conf` con las dos direcciones y el `seed_host` del nodo 1 apuntando a A. Las IP de la tabla son de ejemplo (RFC 5737); en el laboratorio cada PC usa la dirección asignada por la red. A se arrancó primero y B dentro de los 2 minutos siguientes. Las seis aplicaciones se lanzaron desde el menú `./dsm.sh` (opción 5).
 
 | Aplicación | Verificación |
 |---|---|
@@ -367,7 +367,7 @@ La lectura local es un acceso a memoria normal (la página ya está en `S`/`M`);
 
 Resuelto en esta etapa:
 
-- [x] **Pruebas en 2 máquinas físicas:** Validado en 2 PCs del laboratorio (Linux Mint 22.3), seis aplicaciones ejecutadas sobre A (`192.0.2.10`) y B (`192.0.2.11`) con `nodes_2.conf`.
+- [x] **Pruebas en 2 máquinas físicas:** Validado en 2 PCs del laboratorio (Linux Mint 22.3), seis aplicaciones ejecutadas sobre A (`192.0.2.10`) y B (`192.0.2.11`) con `nodes_2.conf` (direcciones de ejemplo).
 - [x] **Interfaz de operación en laboratorio:** `./dsm.sh` (menú interactivo, configuración de IPs/rol, build, arranque, apps, control, logs, parada y diagnóstico de red con PID/proceso).
 
 Abierto (entrega final):

@@ -117,7 +117,7 @@ Datos de corridas ejecutadas y registradas; no son estimaciones.
 | PC A | home / nodo 0 | `192.0.2.10` | 27300–27303 |
 | PC B | cliente / nodo 1 | `192.0.2.11` | 27304–27307 |
 
-Las dos con Linux Mint 22.3. `nodes_2.conf` con las dos direcciones y el `seed_host` del nodo 1 apuntando a A.
+Las dos con Linux Mint 22.3. `nodes_2.conf` con las dos direcciones y el `seed_host` del nodo 1 apuntando a A. Las IP de la tabla son de ejemplo (rango de documentación RFC 5737); en el laboratorio cada PC usa la dirección que le asigna la red.
 
 Se ejecutaron las seis aplicaciones (`demo`, `file`, `counter`, `bench`, `evict` y `matrices`) sobre las dos máquinas, arrancando A primero y B dentro de los 2 minutos siguientes.
 
@@ -150,7 +150,9 @@ ProyectoSO/
 ├── Entregable_3/
 │   ├── INSTRUCCIONES.md
 │   ├── 03_Entregable_3_Prototipo_2.md   **Documento completo (15 secciones)**
+│   ├── 03_Entregable_3_Prototipo_2.pdf  Versión pública del entregable (sanitizada)
 │   ├── 03_Entregable_3_Guia_Codigo.md   **Guía módulo por módulo**
+│   ├── 04_Manual_Usuario.md             Manual de operación con `./dsm.sh`
 │   └── prototipo2/                      **Código, Makefile, configs, lab.sh**
 │       ├── include/                     18 cabeceras públicas
 │       ├── src/                         25 módulos .c
@@ -167,7 +169,7 @@ ProyectoSO/
 - [Entregable 1 — Documento de diseño](Entregable_1/01_Entregable_1_Diseno.md)
 - [Entregable 2 — Prototipo 1](Entregable_2/02_Entregable_2_Prototipo_1.md)
 - [Entregable 2 — Guía del código](Entregable_2/02_Entregable_2_Guia_Codigo.md)
-- [Entregable 3 — Prototipo 2](Entregable_3/03_Entregable_3_Prototipo_2.md)
+- [Entregable 3 — Prototipo 2](Entregable_3/03_Entregable_3_Prototipo_2.md) · [versión PDF pública](Entregable_3/03_Entregable_3_Prototipo_2.pdf)
 - [Entregable 3 — Guía del código](Entregable_3/03_Entregable_3_Guia_Codigo.md)
 - [Entregable 3 — Manual de usuario](Entregable_3/04_Manual_Usuario.md)
 - [Instrucciones del Entregable 1](Entregable_1/INSTRUCCIONES.md)
@@ -234,7 +236,7 @@ cd Entregable_3/prototipo2
 
 Arrancar siempre la PC A primero y la B dentro de los 2 minutos siguientes: la barrera de `demo` espera como máximo 120 s. Abrir TCP `27300–27315` en el firewall de cada PC.
 
-Ejemplo validado en el laboratorio: A `192.0.2.10`, B `192.0.2.11`.
+Direcciones de ejemplo: A `192.0.2.10`, B `192.0.2.11`. En el laboratorio se usan las IP asignadas a cada PC.
 
 ## Limitaciones conocidas
 
