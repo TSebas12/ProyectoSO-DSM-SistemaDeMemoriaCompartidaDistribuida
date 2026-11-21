@@ -372,6 +372,56 @@ dsm_status_t dsm_config_validate(const dsm_config_t *cfg)
     return DSM_OK;
 }
 
+/* Huella FNV-1a del clúster (parámetros + tabla de nodos ordenada).
+   No incluye node_id ni log_file. */
+uint32_t dsm_config_fingerprint(const dsm_config_t *cfg, const dsm_nodes_t *nodes)
+{
+    uint32_t h = 2166136261u;
+    uint32_t i;
+    char buf[256];
+
+    if (cfg == NULL) {
+        return 0u;
+    }
+
+#define MIX(v)  do { h ^= (uint32_t)(v); h *= 16777619u; } while (0)
+
+    MIX(cfg->config_version);
+    MIX(cfg->page_size);
+    MIX((uint32_t)(cfg->node_memory & 0xFFFFFFFFu));
+    MIX((uint32_t)((cfg->node_memory >> 32) & 0xFFFFFFFFu));
+    MIX((uint32_t)(cfg->window_size & 0xFFFFFFFFu));
+    MIX((uint32_t)((cfg->window_size >> 32) & 0xFFFFFFFFu));
+    MIX(cfg->max_nodes);
+    MIX(cfg->port_range_start);
+    MIX(cfg->port_range_end);
+    MIX(cfg->replication_factor);
+    MIX(DSM_PROTOCOL_VERSION);
+
+    if (nodes != NULL) {
+        /* Ordenar por id para que la huella no dependa del orden del archivo. */
+        for (i = 0; i < DSM_MAX_PEERS; i++) {
+            const dsm_peer_t *p = &nodes->peer[i];
+            if (!p->valid) {
+                continue;
+            }
+            MIX(p->node_id);
+            MIX(p->port);
+            snprintf(buf, sizeof(buf), "%s", p->host);
+            {
+                uint32_t j;
+                for (j = 0; buf[j] != '\0'; j++) {
+                    h ^= (uint8_t)buf[j];
+                    h *= 16777619u;
+                }
+            }
+        }
+    }
+#undef MIX
+
+    return h;
+}
+
 dsm_status_t dsm_config_save(const char *path, const dsm_config_t *cfg)
 {
     FILE *f;

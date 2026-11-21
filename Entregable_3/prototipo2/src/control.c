@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include "dsm_coherence.h"
+#include "dsm_config.h"
 #include "dsm_heartbeat.h"
 #include "dsm_memory.h"
 #include "dsm_nodes.h"
@@ -149,6 +150,23 @@ int dsm_control_dispatch(dsm_runtime_t *rt, const char *cmd, char *out, size_t l
     if (strcmp(cmd, "nodes") == 0) {
         return format_nodes(rt, out, len);
     }
+    if (strcmp(cmd, "config") == 0) {
+        uint32_t fp = dsm_config_fingerprint(&rt->cfg, &rt->nodes);
+        return snprintf(out, len,
+                        "nodo            : %u\n"
+                        "huella          : %08x\n"
+                        "page_size       : %u\n"
+                        "node_memory     : %llu\n"
+                        "max_nodes       : %u\n"
+                        "replication     : %u\n"
+                        "puertos         : %u-%u\n",
+                        rt->cfg.node_id, fp,
+                        rt->cfg.page_size,
+                        (unsigned long long)rt->cfg.node_memory,
+                        rt->cfg.max_nodes,
+                        rt->cfg.replication_factor,
+                        rt->cfg.port_range_start, rt->cfg.port_range_end);
+    }
     if (strcmp(cmd, "info") == 0) {
         return snprintf(out, len,
                         "nodo          : %u\n"
@@ -169,7 +187,7 @@ int dsm_control_dispatch(dsm_runtime_t *rt, const char *cmd, char *out, size_t l
     }
     if (strcmp(cmd, "help") == 0) {
         return snprintf(out, len,
-                        "comandos: stats pages dir objects nodes info ping help\n");
+                        "comandos: stats pages dir objects nodes info ping config help\n");
     }
     return snprintf(out, len, "error: comando desconocido: %s\n", cmd);
 }

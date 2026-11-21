@@ -65,7 +65,8 @@ typedef enum dsm_status {
     DSM_ERR_CHECKSUM    = -19,
     DSM_ERR_SHUTDOWN    = -20,
     DSM_ERR_NO_SPACE    = -21,
-    DSM_ERR_PEER_DOWN   = -22
+    DSM_ERR_PEER_DOWN       = -22,
+    DSM_ERR_CONFIG_MISMATCH = -23
 } dsm_status_t;
 
 static inline const char *dsm_status_name(dsm_status_t st)
@@ -93,8 +94,9 @@ static inline const char *dsm_status_name(dsm_status_t st)
     case DSM_ERR_CHECKSUM:   return "DSM_ERR_CHECKSUM";
     case DSM_ERR_SHUTDOWN:   return "DSM_ERR_SHUTDOWN";
     case DSM_ERR_NO_SPACE:   return "DSM_ERR_NO_SPACE";
-    case DSM_ERR_PEER_DOWN:  return "DSM_ERR_PEER_DOWN";
-    default:                 return "DSM_ERR_DESCONOCIDO";
+    case DSM_ERR_PEER_DOWN:       return "DSM_ERR_PEER_DOWN";
+    case DSM_ERR_CONFIG_MISMATCH: return "DSM_ERR_CONFIG_MISMATCH";
+    default:                      return "DSM_ERR_DESCONOCIDO";
     }
 }
 

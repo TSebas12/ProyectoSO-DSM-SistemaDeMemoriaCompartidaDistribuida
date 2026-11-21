@@ -56,6 +56,7 @@ struct dsm_net {
     dsm_nodes_t      nodes;
     dsm_coherence_t *co;
     dsm_stats_t     *stats;
+    uint32_t         cluster_hash;   /* huella de configuración (A2) */
 
     dsm_peer_conn_t  conn[DSM_MAX_PEERS];
 
@@ -128,6 +129,15 @@ static int write_msg_fd(dsm_net_t *net, int fd, const dsm_msg_t *msg)
 
     if (dsm_protocol_encode(msg, &buf, &len) != 0) {
         return -1;
+    }
+    /*
+     * Huella de configuración: se pone en el campo reserved2 de la cabecera
+     * (offset 60, 4 bytes) para que el receptor pueda detectar configuraciones
+     * incompatibles sin esperar un timeout.
+     */
+    if (net != NULL && len >= 64u) {
+        uint32_t r2 = htonl(net->cluster_hash);
+        memcpy(buf + 60, &r2, 4);
     }
     while (sent < len) {
         ssize_t r = send(fd, buf + sent, len - sent, MSG_NOSIGNAL);
@@ -305,6 +315,14 @@ static dsm_status_t rpc_once(dsm_net_t *net, uint32_t dst, const dsm_msg_t *req,
     if (h.magic != DSM_MAGIC || h.version != DSM_PROTOCOL_VERSION) {
         peer_release(net, dst, 0);
         return DSM_ERR_PROTOCOL;
+    }
+    if (h.reserved2 != 0u && net->cluster_hash != 0u &&
+        h.reserved2 != net->cluster_hash) {
+        peer_release(net, dst, 0);
+        DSM_LOG(DSM_LOG_WARN,
+                "net: config mismatch con nodo %u: local=%08x remoto=%08x",
+                dst, net->cluster_hash, h.reserved2);
+        return DSM_ERR_CONFIG_MISMATCH;
     }
     if (h.payload_len > net->cfg.max_message_size) {
         peer_release(net, dst, 0);
@@ -513,6 +531,18 @@ static void serve_connection(dsm_net_t *net, int cfd)
             h.payload_len > net->cfg.max_message_size) {
             break;
         }
+        /*
+         * Huella de configuración: si el peer envía una huella distinta de
+         * cero y no coincide con la local, se corta la conexión (fail-fast).
+         * Una huella 0 se acepta por compatibilidad con peers antiguos.
+         */
+        if (h.reserved2 != 0u && net->cluster_hash != 0u &&
+            h.reserved2 != net->cluster_hash) {
+            DSM_LOG(DSM_LOG_WARN,
+                    "net: config mismatch en conexion entrante: local=%08x remoto=%08x",
+                    net->cluster_hash, h.reserved2);
+            break;
+        }
         total = 64u + h.payload_len;
         buf   = malloc(total);
         if (buf == NULL) {
@@ -664,10 +694,11 @@ dsm_net_t *dsm_net_create(const dsm_config_t *cfg, const dsm_nodes_t *nodes,
     if (net == NULL) {
         return NULL;
     }
-    net->cfg      = *cfg;
-    net->nodes    = *nodes;
-    net->co       = co;
-    net->listen_fd = -1;
+    net->cfg          = *cfg;
+    net->nodes        = *nodes;
+    net->co           = co;
+    net->cluster_hash = dsm_config_fingerprint(cfg, nodes);
+    net->listen_fd    = -1;
     atomic_init(&net->running, 0);
 
     for (i = 0; i < DSM_MAX_PEERS; i++) {
@@ -729,7 +760,7 @@ dsm_status_t dsm_net_start(dsm_net_t *net)
     if (bind(net->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         return DSM_ERR_NET;
     }
-    if (listen(net->listen_fd, 128) != 0) {
+    if (listen(net->listen_fd, 512) != 0) {
         return DSM_ERR_NET;
     }
 

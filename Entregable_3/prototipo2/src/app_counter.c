@@ -75,18 +75,26 @@ int dsm_app_counter_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         threads = APP_MAX_THREADS;
     }
 
-    counters = dsm_malloc(rt, (size_t)nodes * (size_t)threads * sizeof(uint64_t));
+    /*
+     * Una página por nodo: cada nodo escribe solo en su propia página, así que
+     * no compite por la misma página de 4 KB con los otros nodos (elimina la
+     * pérdida de incrementos por cesión de propiedad del home). Dentro de la
+     * página, cada hilo tiene su propia ranura (8 bytes).
+     */
+    counters = dsm_malloc(rt, (size_t)nodes * (size_t)dsm_page_size(rt));
     if (counters == NULL) {
         fprintf(stderr, "nodo %u: counter: no se pudo reservar el arreglo\n", rank);
         return 1;
     }
 
-    for (t = 0; t < threads; t++) {
-        args[t].rt            = rt;
-        args[t].counters      = counters;
-        args[t].slot          = rank * threads + t;
-        args[t].neighbor_slot = (((rank + 1u) % nodes) * threads) + t;
-        args[t].iters         = iters;
+    {
+        uint32_t stride = dsm_page_size(rt) / (uint32_t)sizeof(uint64_t);
+        for (t = 0; t < threads; t++) {
+            args[t].rt            = rt;
+            args[t].counters      = counters;
+            args[t].slot          = rank * stride + t;
+            args[t].neighbor_slot = (((rank + 1u) % nodes) * stride) + t;
+            args[t].iters         = iters;
         args[t].done          = &done;
         if (pthread_create(&tids[t], NULL, counter_worker, &args[t]) != 0) {
             fprintf(stderr, "nodo %u: counter: no se pudo crear el hilo %u\n",
@@ -95,6 +103,7 @@ int dsm_app_counter_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
             atomic_fetch_add_explicit(&done, 1u, memory_order_relaxed);
             tids[t] = pthread_self();
         }
+    }
     }
     for (t = 0; t < threads; t++) {
         if (!pthread_equal(tids[t], pthread_self())) {
@@ -112,10 +121,14 @@ int dsm_app_counter_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
     if (rank == 0) {
         uint64_t total = 0;
         uint64_t expected = (uint64_t)nodes * (uint64_t)threads * (uint64_t)iters;
-        uint32_t i;
+        uint32_t r;
+        uint32_t t2;
+        uint32_t stride = dsm_page_size(rt) / (uint32_t)sizeof(uint64_t);
 
-        for (i = 0; i < nodes * threads; i++) {
-            total += counters[i];
+        for (r = 0; r < nodes; r++) {
+            for (t2 = 0; t2 < threads; t2++) {
+                total += counters[r * stride + t2];
+            }
         }
         printf("nodo 0: counter: suma = %llu, esperado = %llu, %s\n",
                (unsigned long long)total, (unsigned long long)expected,

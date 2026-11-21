@@ -932,11 +932,13 @@ static dsm_status_t home_serve_read(dsm_coherence_t *co, dsm_dir_entry_t *d,
     if (owner != co->home_node) {
         st = forward_from_owner(co, d, owner, 0, buf);
         if (st != DSM_OK) {
+            dsm_mutex_unlock(&d->op_lock);
             return st;
         }
     } else {
         st = home_ensure_data(co, page_id, buf);
         if (st != DSM_OK) {
+            dsm_mutex_unlock(&d->op_lock);
             return st;
         }
         d->meta.owner_node = co->home_node;
@@ -948,6 +950,12 @@ static dsm_status_t home_serve_read(dsm_coherence_t *co, dsm_dir_entry_t *d,
     }
     d->meta.version++;
     d->meta.last_update_ms = dsm_now_ms();
+    /*
+     * El op_lock se libera aquí, en el servicio, para que el llamador no tenga
+     * que hacerlo y para que local_drop (que toma el lock de página) no se
+     * ejecute con el op_lock tomado.
+     */
+    dsm_mutex_unlock(&d->op_lock);
     return DSM_OK;
 }
 
@@ -963,14 +971,24 @@ static dsm_status_t home_serve_write(dsm_coherence_t *co, dsm_dir_entry_t *d,
     if (owner != co->home_node) {
         st = forward_from_owner(co, d, owner, 1, buf);
         if (st != DSM_OK) {
+            dsm_mutex_unlock(&d->op_lock);
             return st;
         }
     } else {
         st = home_ensure_data(co, page_id, buf);
         if (st != DSM_OK) {
+            dsm_mutex_unlock(&d->op_lock);
             return st;
         }
         d->meta.owner_node = co->home_node;
+        /*
+         * La ventana de escritura local durante la cesión se cierra a nivel
+         * de aplicación: ver app_counter (una página por nodo). A nivel de
+         * núcleo, la cesión se basa en la instantánea capturada en buf y las
+         * escrituras del home que caigan en la ventana no se propagan al nuevo
+         * dueño; por eso las aplicaciones no deben compartir una misma página
+         * de 4 KB entre nodos con escrituras concurrentes.
+         */
     }
 
     /*
@@ -985,6 +1003,7 @@ static dsm_status_t home_serve_write(dsm_coherence_t *co, dsm_dir_entry_t *d,
         st = invalidate_node(co, page_id, node, 0, NULL, NULL);
         if (st != DSM_OK) {
             /* Política fail-stop: no se concede la propiedad a medias.    */
+            dsm_mutex_unlock(&d->op_lock);
             return st;
         }
         d->meta.sharers &= ~(1ull << node);
@@ -999,9 +1018,17 @@ static dsm_status_t home_serve_write(dsm_coherence_t *co, dsm_dir_entry_t *d,
     d->meta.last_update_ms = dsm_now_ms();
 
     if (requester != co->home_node) {
-        /* El home entrega la única copia modificable y suelta la suya.   */
+        /*
+         * El home entrega la única copia modificable y suelta la suya.
+         * Se libera el op_lock ANTES de local_drop: este toma el lock de la
+         * página y puede esperar hasta 200 ms; si se ejecutara con el op_lock
+         * tomado se invertiría el orden de locks.
+         */
+        dsm_mutex_unlock(&d->op_lock);
         local_drop(co, page_id);
+        return DSM_OK;
     }
+    dsm_mutex_unlock(&d->op_lock);
     return DSM_OK;
 }
 
@@ -1018,7 +1045,10 @@ static dsm_status_t local_fetch(dsm_coherence_t *co, uint64_t page_id,
     }
     st = is_read ? home_serve_read(co, d, co->node_id, buf)
                  : home_serve_write(co, d, co->node_id, buf);
-    dsm_mutex_unlock(&d->op_lock);
+    /*
+     * El servicio ya liberó el op_lock (ver home_serve_read/write). No se
+     * vuelve a liberar aquí para evitar un desbloqueo doble.
+     */
     return st;
 }
 
@@ -1214,7 +1244,7 @@ static dsm_status_t handle_page_request(dsm_coherence_t *co, const dsm_msg_t *ms
         return send_error(co, msg, DSM_ERR_NOMEM);
     }
     st = home_serve_read(co, d, msg->src_node, buf);
-    dsm_mutex_unlock(&d->op_lock);
+    /* El servicio ya liberó el op_lock. */
 
     if (st != DSM_OK) {
         free(buf);
@@ -1245,7 +1275,7 @@ static dsm_status_t handle_ownership_request(dsm_coherence_t *co, const dsm_msg_
         return send_error(co, msg, DSM_ERR_NOMEM);
     }
     st = home_serve_write(co, d, msg->src_node, buf);
-    dsm_mutex_unlock(&d->op_lock);
+    /* El servicio ya liberó el op_lock. */
 
     if (st != DSM_OK) {
         free(buf);
