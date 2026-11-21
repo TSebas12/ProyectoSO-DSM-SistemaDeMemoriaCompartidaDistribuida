@@ -33,7 +33,7 @@
 | 1.5 | 30 oct 2026 | Redactado el diseño formal del Entregable 1 en `Entregable_1/01_Entregable_1_Diseno.md`. |
 | 1.6 | 10 nov 2026 | Rango de puertos definitivo de la pareja #3: `27300–27399` (antes `50000–50099`, que era una propuesta a validar). |
 | 1.7 | 17 nov 2026 | Repositorio confirmado; pendientes operativos resueltos; incorporados los resultados reales de E2 (2 máquinas físicas) y E3 (4 nodos en loopback) en §13.6, el estado de cada hito en §14.1 y las decisiones cerradas en §21.1. |
-| 1.8 | 19 nov 2026 | E3 ejecutado en 2 PCs del laboratorio (A `172.19.13.67`, B `172.19.13.32`) con las seis aplicaciones; resultados de la corrida incorporados en §13.6 y en el entregable 3, §9.3.1. |
+| 1.8 | 19 nov 2026 | E3 ejecutado en 2 PCs del laboratorio (A home y B cliente) con las seis aplicaciones; resultados de la corrida incorporados en §13.6 y en el entregable 3, §9.3.1. |
 
 > [!IMPORTANT]
 > **Nota de decisiones pendientes y respuestas temporales**
@@ -1937,10 +1937,10 @@ Latencias de `bench` (64 páginas, 32 operaciones por fase, 2 nodos): lectura lo
 
 | Equipo | Rol | IP | Puertos |
 |---|---|---|---|
-| PC A | home / nodo 0 | `172.19.13.67` | 27300–27303 |
-| PC B | cliente / nodo 1 | `172.19.13.32` | 27304–27307 |
+| PC A | home / nodo 0 | `192.0.2.10` | 27300–27303 |
+| PC B | cliente / nodo 1 | `192.0.2.11` | 27304–27307 |
 
-Las dos con Linux Mint 22.3, tabla `nodes_2.conf` con las dos direcciones y el `seed_host` del nodo 1 apuntando a A. Las seis aplicaciones se lanzaron desde `./dsm.sh` (opción 5), con A primero y B dentro de los 2 minutos siguientes.
+Las dos con Linux Mint 22.3, tabla `nodes_2.conf` con las dos direcciones y el `seed_host` del nodo 1 apuntando a A. Las IP de la tabla son de ejemplo (RFC 5737); en el laboratorio cada PC usa la dirección asignada por la red. Las seis aplicaciones se lanzaron desde `./dsm.sh` (opción 5), con A primero y B dentro de los 2 minutos siguientes.
 
 | Prueba | Verificación |
 |---|---|

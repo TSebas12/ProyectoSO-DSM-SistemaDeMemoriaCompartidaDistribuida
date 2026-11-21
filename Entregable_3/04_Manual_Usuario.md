@@ -66,11 +66,11 @@ El estado (rol e IPs) se guarda en `.dsm_state` (ignorado por Git) y se carga al
 En **las dos PCs**, con los mismos valores:
 
 ```
-IP de la máquina A (home, nodo 0): 172.19.13.67
-IP de la máquina B (cliente, nodo 1): 172.19.13.32
+IP de la máquina A (home, nodo 0): 192.0.2.10
+IP de la máquina B (cliente, nodo 1): 192.0.2.11
 ```
 
-Ejemplo validado en el laboratorio: A `172.19.13.67`, B `172.19.13.32`.
+Ejemplo con direcciones de documentación (RFC 5737): A `192.0.2.10`, B `192.0.2.11`. En el laboratorio se usan las IP asignadas a cada PC.
 
 Esto actualiza `config/nodes.conf`, `config/nodes_2.conf` (nodos 0 y 1) y el `seed_host` de los nodos 1–3.
 
