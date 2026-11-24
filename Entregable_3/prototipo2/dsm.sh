@@ -3,20 +3,21 @@
 #
 # Uso:  ./dsm.sh
 #
-# Todo se hace desde este menú: IPs de las dos máquinas, rol de esta máquina
-# (A = home / nodo 0, B = cliente / nodo 1), compilación, arranque, consultas,
-# logs, parada y diagnóstico de red.
+# Todo se hace desde este menú: topología (2/3/4 PCs), IPs, rol de esta máquina
+# (A = home / nodo 0, B/C/D = clientes), compilación, arranque, consultas,
+# logs, parada, validación de configuración y diagnóstico de red.
 
 set -u
 cd "$(dirname "$0")" || exit 1
 
 STATE=".dsm_state"
-NODES="config/nodes.conf"
-NODES2="config/nodes_2.conf"
 
 ROLE=""
+TOPOLOGY="2"
 IP_A=""
 IP_B=""
+IP_C=""
+IP_D=""
 
 # --- estado ---------------------------------------------------------------
 
@@ -24,13 +25,17 @@ load_state() {
     [ -f "$STATE" ] || return 0
     # shellcheck disable=SC1090
     . "$STATE"
+    TOPOLOGY="${TOPOLOGY:-2}"
 }
 
 save_state() {
     {
         printf 'ROLE=%s\n' "${ROLE:-}"
+        printf 'TOPOLOGY=%s\n' "${TOPOLOGY:-2}"
         printf 'IP_A=%s\n' "${IP_A:-}"
         printf 'IP_B=%s\n' "${IP_B:-}"
+        printf 'IP_C=%s\n' "${IP_C:-}"
+        printf 'IP_D=%s\n' "${IP_D:-}"
     } >"$STATE"
 }
 
@@ -54,12 +59,25 @@ port_for_role() {
     esac
 }
 
-peer_ip() {
+role_ports() {
     case "${ROLE:-}" in
-        A) echo "${IP_B:-}" ;;
-        B) echo "${IP_A:-}" ;;
-        *) echo "" ;;
+        A) echo "27300 27301 27302 27303" ;;
+        B) echo "27304 27305 27306 27307" ;;
+        C) echo "27308 27309 27310 27311" ;;
+        D) echo "27312 27313 27314 27315" ;;
+        *) return 1 ;;
     esac
+}
+
+peer_ips() {
+    # Imprime las IP de los otros nodos según la topología.
+    [ -n "${IP_B:-}" ] && [ "${TOPOLOGY:-2}" -ge 2 ] && echo "B ${IP_B}"
+    [ -n "${IP_C:-}" ] && [ "${TOPOLOGY:-2}" -ge 3 ] && echo "C ${IP_C}"
+    [ -n "${IP_D:-}" ] && [ "${TOPOLOGY:-2}" -ge 4 ] && echo "D ${IP_D}"
+}
+
+nodes_file_for_topology() {
+    echo "config/nodes_${TOPOLOGY:-2}.conf"
 }
 
 valid_ip() {
@@ -72,43 +90,61 @@ valid_ip() {
     '
 }
 
+write_nodes_file() {
+    local n="${TOPOLOGY:-2}"
+    local f="config/nodes_${n}.conf"
+    local ips=("${IP_A}" "${IP_B}" "${IP_C}" "${IP_D}")
+    local ports=(27300 27304 27308 27312)
+
+    {
+        echo "# Tabla de ${n} nodos (generada por dsm.sh)."
+        echo "# Formato: id host puerto"
+        local i
+        for ((i = 0; i < n; i++)); do
+            echo "${i} ${ips[$i]} ${ports[$i]}"
+        done
+    } >"$f"
+}
+
 # --- pasos ----------------------------------------------------------------
 
 do_ips() {
     echo
-    echo "IP de la máquina A (home, nodo 0):"
-    read -r -p "  IP_A: " a
-    echo "IP de la máquina B (cliente, nodo 1):"
-    read -r -p "  IP_B: " b
+    echo "Topología del clúster:"
+    echo "  2) 2 PCs"
+    echo "  3) 3 PCs"
+    echo "  4) 4 PCs"
+    read -r -p "  Topología [2/3/4]: " t
+    case "$t" in
+        2|3|4) TOPOLOGY="$t" ;;
+        *) echo "Opción inválida."; return 1 ;;
+    esac
 
-    if ! valid_ip "$a" || ! valid_ip "$b"; then
-        echo "ERROR: alguna IP no es válida."
+    echo
+    read -r -p "  IP_A (home, nodo 0): " a
+    read -r -p "  IP_B (nodo 1): " b
+    IP_A="$a"; IP_B="$b"
+    if [ "$TOPOLOGY" -ge 3 ]; then
+        read -r -p "  IP_C (nodo 2): " c; IP_C="$c"
+    fi
+    if [ "$TOPOLOGY" -ge 4 ]; then
+        read -r -p "  IP_D (nodo 3): " d; IP_D="$d"
+    fi
+
+    if ! valid_ip "$IP_A" || ! valid_ip "$IP_B"; then
+        echo "ERROR: IP_A o IP_B no válida."
         return 1
     fi
-    if [ "$a" = "$b" ]; then
-        echo "ERROR: A y B no pueden tener la misma IP."
+    if [ "$TOPOLOGY" -ge 3 ] && ! valid_ip "$IP_C"; then
+        echo "ERROR: IP_C no válida."
+        return 1
+    fi
+    if [ "$TOPOLOGY" -ge 4 ] && ! valid_ip "$IP_D"; then
+        echo "ERROR: IP_D no válida."
         return 1
     fi
 
-    IP_A="$a"
-    IP_B="$b"
-
-    for f in "$NODES" "$NODES2"; do
-        [ -f "$f" ] || continue
-        awk -v id=0 -v ip="$IP_A" '
-            /^[[:space:]]*#/ { print; next }
-            NF == 0          { print; next }
-            $1 == id         { $2 = ip; print; next }
-            { print }
-        ' "$f" >"$f.tmp" && mv "$f.tmp" "$f" || return 1
-
-        awk -v id=1 -v ip="$IP_B" '
-            /^[[:space:]]*#/ { print; next }
-            NF == 0          { print; next }
-            $1 == id         { $2 = ip; print; next }
-            { print }
-        ' "$f" >"$f.tmp" && mv "$f.tmp" "$f" || return 1
-    done
+    write_nodes_file
 
     # Los nodos 1..3 apuntan al home (A).
     for f in config/node1.conf config/node2.conf config/node3.conf; do
@@ -117,10 +153,9 @@ do_ips() {
 
     save_state
     echo
-    echo "Tablas actualizadas:"
-    grep -v '^[[:space:]]*#' "$NODES2" | grep -v '^[[:space:]]*$'
-    echo
-    echo "seed_host de node1..3 = $IP_A"
+    echo "Topología: $TOPOLOGY nodos"
+    echo "Tabla generada: $(nodes_file_for_topology)"
+    cat "$(nodes_file_for_topology)"
 }
 
 do_role() {
@@ -186,13 +221,11 @@ EOF
 kill_leftovers() {
     local pids
 
-    # 1. SIGTERM a todos los dsm_node.
     pids=$(pgrep -f '[d]sm_node' 2>/dev/null || true)
     if [ -n "$pids" ]; then
         kill $pids 2>/dev/null || true
         sleep 2
     fi
-    # 2. SIGKILL a los que sigan vivos (procesos trabados, sudo, etc.).
     pids=$(pgrep -f '[d]sm_node' 2>/dev/null || true)
     if [ -n "$pids" ]; then
         kill -9 $pids 2>/dev/null || true
@@ -201,21 +234,11 @@ kill_leftovers() {
 }
 
 check_port_free() {
-    local ports p
-
-    # Los 4 puertos del rol (listen/control/heartbeat/web).
-    case "${ROLE:-}" in
-        A) ports="27300 27301 27302 27303" ;;
-        B) ports="27304 27305 27306 27307" ;;
-        C) ports="27308 27309 27310 27311" ;;
-        D) ports="27312 27313 27314 27315" ;;
-        *) return 1 ;;
-    esac
-
-    for p in $ports; do
+    local p
+    for p in $(role_ports); do
         if ss -ltn 2>/dev/null | grep -q ":$p "; then
             echo "ERROR: el puerto $p ya está ocupado."
-            echo "       Cerrá el nodo anterior (opción 8) o libéralo con la opción 10."
+            echo "       Cierra el nodo anterior (opción 8) o libéralo con la opción 10."
             ss -ltnp 2>/dev/null | grep ":$p " || true
             return 1
         fi
@@ -224,29 +247,31 @@ check_port_free() {
 }
 
 do_start() {
-    local cfg
-    cfg="$(cfg_for_role)" || { echo "Definí el rol primero (opción 2)."; return 1; }
+    local cfg nf
+    cfg="$(cfg_for_role)" || { echo "Define el rol primero (opción 2)."; return 1; }
     [ -x ./dsm_node ] || { echo "Falta compilar (opción 3)."; return 1; }
+    nf="$(nodes_file_for_topology)"
 
     kill_leftovers
     check_port_free || return 1
 
     echo
-    echo "Arrancando: ./dsm_node --config $cfg --nodes $NODES2"
-    echo "Dejá esta terminal abierta. Ctrl+C para detener."
+    echo "Arrancando: ./dsm_node --config $cfg --nodes $nf"
+    echo "Deja esta terminal abierta. Ctrl+C para detener."
     echo
-    ./dsm_node --config "$cfg" --nodes "$NODES2"
+    ./dsm_node --config "$cfg" --nodes "$nf"
 }
 
 do_app() {
-    local cfg
-    cfg="$(cfg_for_role)" || { echo "Definí el rol primero (opción 2)."; return 1; }
+    local cfg nf
+    cfg="$(cfg_for_role)" || { echo "Define el rol primero (opción 2)."; return 1; }
     [ -x ./dsm_node ] || { echo "Falta compilar (opción 3)."; return 1; }
+    nf="$(nodes_file_for_topology)"
 
     echo
     echo "Aplicación:"
     echo "  1) demo"
-    echo "  2) file (1 MB)"
+    echo "  2) file (1 MB o --file RUTA)"
     echo "  3) counter"
     echo "  4) bench"
     echo "  5) evict (64 páginas / 32 marcos)"
@@ -257,7 +282,14 @@ do_app() {
     local args=()
     case "$opt" in
         1) args=(--app demo) ;;
-        2) args=(--app file) ;;
+        2)
+            read -r -p "  ruta de archivo (Enter = sintético 1 MB): " fp
+            if [ -n "$fp" ]; then
+                args=(--app file --file "$fp")
+            else
+                args=(--app file)
+            fi
+            ;;
         3)
             read -r -p "  iters [100]: " it; it="${it:-100}"
             read -r -p "  threads [2]: " th; th="${th:-2}"
@@ -286,16 +318,16 @@ do_app() {
 
     echo
     echo "Ejecutando en ESTA máquina:"
-    echo "  ./dsm_node --config $cfg --nodes $NODES2 ${args[*]}"
+    echo "  ./dsm_node --config $cfg --nodes $nf ${args[*]}"
     echo
-    echo "Lanzá lo MISMO en la otra máquina AHORA (tenés menos de 2 minutos)."
+    echo "Lanza lo MISMO en las otras máquinas AHORA."
     echo
-    ./dsm_node --config "$cfg" --nodes "$NODES2" "${args[@]}"
+    ./dsm_node --config "$cfg" --nodes "$nf" "${args[@]}"
 }
 
 do_status() {
     local cfg
-    cfg="$(cfg_for_role)" || { echo "Definí el rol primero (opción 2)."; return 1; }
+    cfg="$(cfg_for_role)" || { echo "Define el rol primero (opción 2)."; return 1; }
 
     echo
     echo "--- nodos ---"
@@ -319,7 +351,7 @@ do_status() {
 
 do_log() {
     local cfg n
-    cfg="$(cfg_for_role)" || { echo "Definí el rol primero (opción 2)."; return 1; }
+    cfg="$(cfg_for_role)" || { echo "Define el rol primero (opción 2)."; return 1; }
     n="${cfg##*node}"; n="${n%%.conf}"
     echo
     echo "--- logs/dsm-node$n.log (últimas 40 líneas) ---"
@@ -331,17 +363,97 @@ do_log() {
 }
 
 do_stop() {
-    local port
-    port="$(port_for_role 2>/dev/null)" || port=""
+    local ports p occupied=0
+    ports="$(role_ports)"
     echo
     kill_leftovers
-    if [ -n "$port" ] && ss -ltn 2>/dev/null | grep -q ":$port "; then
-        echo "ERROR: el puerto $port sigue ocupado:"
-        ss -ltnp 2>/dev/null | grep ":$port " || true
+    for p in $ports; do
+        if ss -ltn 2>/dev/null | grep -q ":$p "; then
+            echo "ERROR: el puerto $p sigue ocupado:"
+            ss -ltnp 2>/dev/null | grep ":$p " || true
+            occupied=1
+        fi
+    done
+    if [ "$occupied" -eq 1 ]; then
         echo "Matá el proceso con: sudo kill -9 <PID>"
         return 1
     fi
-    echo "Nodos detenidos; puerto ${port:-?} libre."
+    echo "Nodos detenidos; puertos del rol libres."
+}
+
+do_validate() {
+    local cfg nf
+    cfg="$(cfg_for_role)" || { echo "Define el rol primero (opción 2)."; return 1; }
+    nf="$(nodes_file_for_topology)"
+    echo
+    echo "Validando configuración..."
+    ./dsm_node --config "$cfg" --nodes "$nf" --check-config
+}
+
+do_diag() {
+    local peer
+    echo
+    echo "--- IPs locales ---"
+    hostname -I 2>/dev/null || ip -4 addr show | grep inet
+    echo
+    echo "--- topología: ${TOPOLOGY:-2} nodos ---"
+    echo "  IP_A=$IP_A  IP_B=$IP_B  IP_C=${IP_C:-}  IP_D=${IP_D:-}"
+    echo
+    echo "--- procesos dsm_node ---"
+    pgrep -af dsm_node || echo "(ninguno)"
+    echo
+    echo "--- puertos 27300-27315 escuchando (con PID/proceso) ---"
+    ss -ltnp 2>/dev/null | grep -E ':273(0[0-9]|1[0-5]) ' || echo "(ninguno)"
+    echo
+    for peer in $(peer_ips); do
+        # peer_ips prints "LABEL IP"
+        :
+    done
+    # Probar alcance a cada peer.
+    local label ip p ok
+    for entry in $(peer_ips); do
+        :
+    done
+    # peer_ips output is "B 1.2.3.4" (two tokens); iterate manually.
+    if [ -n "${IP_B:-}" ] && [ "${TOPOLOGY:-2}" -ge 2 ]; then
+        echo "--- alcance a B ($IP_B) ---"
+        for p in 27300 27301 27302 27304 27305 27306; do
+            ok=0
+            if command -v nc >/dev/null 2>&1; then
+                nc -z -w 2 "$IP_B" "$p" 2>/dev/null && ok=1
+            else
+                (exec 3<>"/dev/tcp/$IP_B/$p") 2>/dev/null && ok=1
+            fi
+            [ "$ok" = 1 ] && echo "  $IP_B:$p  OK" || echo "  $IP_B:$p  sin respuesta"
+        done
+    fi
+    if [ -n "${IP_C:-}" ] && [ "${TOPOLOGY:-2}" -ge 3 ]; then
+        echo "--- alcance a C ($IP_C) ---"
+        for p in 27308 27309 27310; do
+            ok=0
+            if command -v nc >/dev/null 2>&1; then
+                nc -z -w 2 "$IP_C" "$p" 2>/dev/null && ok=1
+            else
+                (exec 3<>"/dev/tcp/$IP_C/$p") 2>/dev/null && ok=1
+            fi
+            [ "$ok" = 1 ] && echo "  $IP_C:$p  OK" || echo "  $IP_C:$p  sin respuesta"
+        done
+    fi
+    if [ -n "${IP_D:-}" ] && [ "${TOPOLOGY:-2}" -ge 4 ]; then
+        echo "--- alcance a D ($IP_D) ---"
+        for p in 27312 27313 27314; do
+            ok=0
+            if command -v nc >/dev/null 2>&1; then
+                nc -z -w 2 "$IP_D" "$p" 2>/dev/null && ok=1
+            else
+                (exec 3<>"/dev/tcp/$IP_D/$p") 2>/dev/null && ok=1
+            fi
+            [ "$ok" = 1 ] && echo "  $IP_D:$p  OK" || echo "  $IP_D:$p  sin respuesta"
+        done
+    fi
+    echo
+    echo "--- espacio en disco ---"
+    df -h . | tail -1
 }
 
 do_force() {
@@ -363,45 +475,6 @@ do_force() {
     echo "Listo. Verifica con la opción 9."
 }
 
-do_diag() {
-    local port peer
-    port="$(port_for_role)" || port=""
-    peer="$(peer_ip)"
-
-    echo
-    echo "--- IPs locales ---"
-    hostname -I 2>/dev/null || ip -4 addr show | grep inet
-    echo
-    echo "--- procesos dsm_node ---"
-    pgrep -af dsm_node || echo "(ninguno)"
-    echo
-    echo "--- puertos 27300-27315 escuchando (con PID/proceso) ---"
-    ss -ltnp 2>/dev/null | grep -E ':273(0[0-9]|1[0-5]) ' || echo "(ninguno)"
-    echo
-    if [ -n "$peer" ]; then
-        echo "--- alcance a la otra máquina ($peer) ---"
-        local p ok
-        for p in 27300 27301 27302 27304 27305 27306; do
-            ok=0
-            if command -v nc >/dev/null 2>&1; then
-                nc -z -w 2 "$peer" "$p" 2>/dev/null && ok=1
-            else
-                (exec 3<>"/dev/tcp/$peer/$p") 2>/dev/null && ok=1
-            fi
-            if [ "$ok" = 1 ]; then
-                echo "  $peer:$p  OK"
-            else
-                echo "  $peer:$p  sin respuesta"
-            fi
-        done
-    else
-        echo "(definí las IPs y el rol para probar la otra máquina)"
-    fi
-    echo
-    echo "--- espacio en disco ---"
-    df -h . | tail -1
-}
-
 # --- menú -----------------------------------------------------------------
 
 menu() {
@@ -409,10 +482,10 @@ menu() {
     echo "=============================================================="
     echo " DSM — Prototipo 2        host: $(hostname 2>/dev/null)"
     echo "=============================================================="
-    echo " Rol: ${ROLE:-sin definir}    A=${IP_A:-?}    B=${IP_B:-?}"
+    echo " Rol: ${ROLE:-sin definir}    Topología: ${TOPOLOGY:-2} nodos    A=${IP_A:-?}  B=${IP_B:-?}  C=${IP_C:-?}  D=${IP_D:-?}"
     echo "--------------------------------------------------------------"
-    echo "  1) Configurar IPs de las dos máquinas"
-    echo "  2) Elegir rol de esta máquina (A/B)"
+    echo "  1) Configurar IPs / topología"
+    echo "  2) Elegir rol de esta máquina (A/B/C/D)"
     echo "  3) Compilar (dsm_node + dsmctl)"
     echo "  4) Arrancar nodo escuchando"
     echo "  5) Arrancar con aplicación"
@@ -421,6 +494,7 @@ menu() {
     echo "  8) Detener nodos"
     echo "  9) Diagnóstico de red"
     echo " 10) Forzar liberación de puertos (SIGKILL)"
+    echo " 11) Validar configuración"
     echo "  0) Salir"
     echo "--------------------------------------------------------------"
 }
@@ -441,6 +515,7 @@ while true; do
         8) do_stop ;;
         9) do_diag ;;
        10) do_force ;;
+       11) do_validate ;;
         0) exit 0 ;;
         *) echo "Opción inválida." ;;
     esac
