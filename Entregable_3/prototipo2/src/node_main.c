@@ -58,12 +58,15 @@ static void usage(const char *prog)
     printf("uso: %s [opciones]\n"
            "  --config RUTA     archivo del nodo (def. config/node0.conf)\n"
            "  --nodes RUTA      tabla de nodos (def. config/nodes.conf)\n"
-           "  --app NOMBRE      demo|matrices|file|counter|bench|evict\n"
+           "  --app NOMBRE      demo|matrices|file|counter|bench|evict|chat\n"
            "  --size N          lado de la matriz o bytes del archivo\n"
            "  --pages N         paginas para bench/evict\n"
            "  --iters N         iteraciones de las aplicaciones\n"
            "  --threads N       hilos por nodo (counter)\n"
            "  --file RUTA       archivo de entrada para --app file\n"
+          "  --nick NOMBRE     nick para --app chat\n"
+          "  --text TEXTO      texto inicial para --app chat\n"
+          "  --duration S      duracion en segundos para --app chat\n"
            "  --frames N        fuerza N marcos por nodo (pruebas de expulsion)\n"
            "  --no-verify       omite la verificacion de matrices/file\n"
            "  --serve           queda escuchando despues de la aplicacion\n"
@@ -121,6 +124,12 @@ int main(int argc, char **argv)
             opts.threads = (uint32_t)strtoul(argv[++i], NULL, 10);
         } else if (strcmp(argv[i], "--file") == 0 && i + 1 < argc) {
             opts.file = argv[++i];
+        } else if (strcmp(argv[i], "--nick") == 0 && i + 1 < argc) {
+            opts.nick = argv[++i];
+        } else if (strcmp(argv[i], "--text") == 0 && i + 1 < argc) {
+            opts.text = argv[++i];
+        } else if (strcmp(argv[i], "--duration") == 0 && i + 1 < argc) {
+            opts.duration = (uint32_t)strtoul(argv[++i], NULL, 10);
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             frames_override = (uint32_t)strtoul(argv[++i], NULL, 10);
         } else if (strcmp(argv[i], "--serve") == 0) {

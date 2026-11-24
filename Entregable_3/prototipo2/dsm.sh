@@ -169,7 +169,7 @@ EOF
         src/config.c src/protocol.c src/log.c src/nodes.c src/net.c \
         src/dsm_api.c src/runtime.c src/demo_page.c src/apps.c \
         src/app_common.c src/app_matrices.c src/app_file.c src/app_counter.c \
-        src/app_bench.c src/app_evict.c src/control.c src/web.c src/heartbeat.c \
+        src/app_bench.c src/app_evict.c src/app_chat.c src/control.c src/web.c src/heartbeat.c \
         src/node_main.c -lpthread -lm -lrt &&
         gcc -std=c11 -D_GNU_SOURCE -Iinclude -O2 -g -include "$hdr" -o dsmctl \
             src/ctl_main.c src/config.c -lpthread -lm; then
@@ -251,6 +251,7 @@ do_app() {
     echo "  4) bench"
     echo "  5) evict (64 páginas / 32 marcos)"
     echo "  6) matrices"
+    echo "  7) chat (texto libre)"
     read -r -p "  Opción: " opt
 
     local args=()
@@ -267,6 +268,15 @@ do_app() {
         6)
             read -r -p "  tamaño [64]: " sz; sz="${sz:-64}"
             args=(--app matrices --size "$sz")
+            ;;
+        7)
+            read -r -p "  nick (Enter = nodoN): " nk
+            read -r -p "  duración seg [0=indefinido]: " du; du="${du:-0}"
+            if [ -n "$nk" ]; then
+                args=(--app chat --nick "$nk" --duration "$du")
+            else
+                args=(--app chat --duration "$du")
+            fi
             ;;
         *) echo "Opción inválida."; return 1 ;;
     esac

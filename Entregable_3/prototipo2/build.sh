@@ -28,7 +28,7 @@ gcc $CFLAGS -o dsm_node \
     src/config.c src/protocol.c src/log.c src/nodes.c src/net.c \
     src/dsm_api.c src/runtime.c src/demo_page.c src/apps.c \
     src/app_common.c src/app_matrices.c src/app_file.c src/app_counter.c \
-    src/app_bench.c src/app_evict.c src/control.c src/web.c src/heartbeat.c \
+    src/app_bench.c src/app_evict.c src/app_chat.c src/control.c src/web.c src/heartbeat.c \
     src/node_main.c -lpthread -lm -lrt
 
 gcc $CFLAGS -o dsmctl \
