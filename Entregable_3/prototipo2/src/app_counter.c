@@ -113,7 +113,7 @@ int dsm_app_counter_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
 
     if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
         fprintf(stderr, "nodo %u: counter: fallo la barrera 'fin de los incrementos'. "
-                        "Arranca los dos nodos con menos de 2 minutos de diferencia.\\n",
+                        "Arranca los dos nodos con menos de 2 minutos de diferencia.\n",
                 rank);
         return 1;
     }
