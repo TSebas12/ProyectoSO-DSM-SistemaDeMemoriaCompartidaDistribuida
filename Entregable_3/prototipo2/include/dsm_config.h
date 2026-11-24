@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "dsm_types.h"
+#include "dsm_nodes.h"
 
 typedef struct dsm_config {
     uint32_t config_version;
@@ -54,6 +55,11 @@ dsm_status_t dsm_config_defaults(dsm_config_t *cfg);
 dsm_status_t dsm_config_load(const char *path, dsm_config_t *cfg);
 dsm_status_t dsm_config_validate(const dsm_config_t *cfg);
 dsm_status_t dsm_config_save(const char *path, const dsm_config_t *cfg);
+
+/* Huella FNV-1a del clúster: parámetros + tabla de nodos ordenada.
+   No incluye node_id ni log_file. Sirve para detectar configuraciones
+   incompatibles entre nodos (DSM_ERR_CONFIG_MISMATCH). */
+uint32_t dsm_config_fingerprint(const dsm_config_t *cfg, const dsm_nodes_t *nodes);
 
 const char *dsm_log_level_name(uint32_t level);
 
