@@ -55,7 +55,9 @@ int dsm_app_file_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
             size_t got = 0;
 
             if (f == NULL) {
-                fprintf(stderr, "nodo 0: file: no se pudo abrir %s\n", opts->file);
+                fprintf(stderr, "nodo 0: file: no se pudo abrir %s "
+                                "(no existe o sin permisos de lectura)\n",
+                        opts->file);
                 memset(buf, 0, (size_t)size);
             } else {
                 got = fread(buf, 1, (size_t)size, f);
