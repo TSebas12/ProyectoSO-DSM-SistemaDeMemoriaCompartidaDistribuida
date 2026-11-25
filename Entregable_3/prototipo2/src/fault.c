@@ -35,7 +35,7 @@ typedef struct dsm_fault_slot {
 } dsm_fault_slot_t;
 
 static struct {
-    int               installed;
+    _Atomic int       installed;
     dsm_fault_map_t   map;
     struct sigaction  prev_segv;
     struct sigaction  prev_usr1;
@@ -187,7 +187,8 @@ static void dsm_segv_handler(int sig, siginfo_t *si, void *uctx)
 
     /* Fuera de la ventana, sin contexto o con un fallo ya en curso: no es   */
     /* un fallo que el DSM pueda resolver.                                   */
-    if (!g_q.installed || ctx == NULL || si == NULL) {
+    if (atomic_load_explicit(&g_q.installed, memory_order_acquire) == 0 ||
+        ctx == NULL || si == NULL) {
         fault_diag("sin contexto o manejador no instalado", si);
         reraise(sig);
         return;
@@ -273,7 +274,7 @@ dsm_status_t dsm_fault_install(const dsm_fault_map_t *map, const dsm_fault_param
     if (map == NULL || map->window_base == NULL || map->page_size == 0) {
         return DSM_ERR_INVAL;
     }
-    if (g_q.installed) {
+    if (atomic_load_explicit(&g_q.installed, memory_order_acquire) != 0) {
         return DSM_ERR_STATE;
     }
 
@@ -335,17 +336,17 @@ dsm_status_t dsm_fault_install(const dsm_fault_map_t *map, const dsm_fault_param
         return DSM_ERR_SIGACTION;
     }
 
-    g_q.installed = 1;
+    atomic_store_explicit(&g_q.installed, 1, memory_order_release);
     return DSM_OK;
 }
 
 void dsm_fault_uninstall(void)
 {
-    if (!g_q.installed) {
+    if (atomic_load_explicit(&g_q.installed, memory_order_acquire) == 0) {
         return;
     }
-    g_q.installed = 0;
-
+    atomic_store_explicit(&g_q.installed, 0, memory_order_release);
+    
     sigaction(SIGSEGV, &g_q.prev_segv, NULL);
     sigaction(DSM_SIG_RESUME, &g_q.prev_usr1, NULL);
 
@@ -436,7 +437,7 @@ dsm_status_t dsm_fault_attach_thread(dsm_thread_ctx_t *ctx)
     if (ctx == NULL) {
         return DSM_ERR_INVAL;
     }
-    if (!g_q.installed) {
+    if (atomic_load_explicit(&g_q.installed, memory_order_acquire) == 0) {
         return DSM_ERR_STATE;
     }
     if (altstack_install_current_thread() != DSM_OK) {
@@ -473,7 +474,7 @@ dsm_status_t dsm_fault_queue_pop(dsm_fault_req_t *out, uint32_t timeout_ms)
     if (out == NULL) {
         return DSM_ERR_INVAL;
     }
-    if (!g_q.installed) {
+    if (atomic_load_explicit(&g_q.installed, memory_order_acquire) == 0) {
         return DSM_ERR_STATE;
     }
 
@@ -513,7 +514,7 @@ uint64_t dsm_fault_queued(void)
 
 void dsm_fault_shutdown(void)
 {
-    if (!g_q.installed) {
+    if (atomic_load_explicit(&g_q.installed, memory_order_acquire) == 0) {
         return;
     }
     /* Idempotente: un segundo aviso dejaría un semáforo de más y el

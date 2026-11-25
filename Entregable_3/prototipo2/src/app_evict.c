@@ -73,9 +73,24 @@ int dsm_app_evict_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
      * Segunda pasada: todos leen todas. Aquí es donde el nodo necesita más
      * marcos que los que tiene: el resolutor expulsa (swap en el home,
      * liberación en los clientes) y luego vuelve a traer si hace falta.
+     * Se verifica que el byte escrito por el dueño sobreviva la ida y vuelta.
      */
-    for (i = 0; i < pages; i++) {
-        sink += buf[(size_t)i * page_size + (i % page_size)];
+    {
+        uint32_t bad = 0u;
+
+        for (i = 0; i < pages; i++) {
+            uint8_t expected = (uint8_t)((i + (i % nodes)) & 0xFFu);
+
+            if (buf[(size_t)i * page_size] != expected) {
+                bad++;
+            }
+            sink += buf[(size_t)i * page_size];
+        }
+        if (bad != 0u) {
+            printf("nodo %u: evict: verificacion FALLO (%u paginas corruptas)\n",
+                   rank, bad);
+            return 2;
+        }
     }
     if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
         fprintf(stderr, "nodo %u: evict: fallo la barrera tras la lectura\n", rank);

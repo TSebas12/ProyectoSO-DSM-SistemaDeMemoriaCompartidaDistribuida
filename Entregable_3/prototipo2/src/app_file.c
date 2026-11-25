@@ -59,6 +59,9 @@ int dsm_app_file_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
                                 "(no existe o sin permisos de lectura)\n",
                         opts->file);
                 memset(buf, 0, (size_t)size);
+                /* Propagar el fallo por la página compartida para que el resto
+                   de nodos no verifique un buffer vacío como OK. */
+                ((uint64_t *)partial)[0] = 1u;
             } else {
                 got = fread(buf, 1, (size_t)size, f);
                 fclose(f);
@@ -82,13 +85,17 @@ int dsm_app_file_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
                 rank);
         return 1;
     }
+    if (((uint64_t *)partial)[0] == 1u) {
+        fprintf(stderr, "nodo %u: file: abortado (archivo no disponible)\n", rank);
+        return 1;
+    }
 
     start = dsm_app_split_start(size, nodes, rank);
     count = dsm_app_split_count(size, nodes, rank);
     local_hash = dsm_app_checksum(buf + start, (size_t)count);
     /* Una página por nodo: cada uno escribe su propio marco, sin falsos
      * compartidos. */
-    ((uint64_t *)partial)[rank] = (uint64_t)local_hash;
+    ((uint64_t *)(partial + (size_t)rank * page_size))[0] = (uint64_t)local_hash;
 
     if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
         fprintf(stderr, "nodo %u: file: fallo la barrera 'checksum'. "
@@ -114,7 +121,7 @@ int dsm_app_file_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
             uint64_t c = dsm_app_split_count(size, nodes, i);
             uint32_t esperado = dsm_app_checksum(buf + s, (size_t)c);
 
-            if (((uint64_t *)partial)[i] != (uint64_t)esperado) {
+            if (((uint64_t *)(partial + (size_t)i * page_size))[0] != (uint64_t)esperado) {
                 total_ok = 0;
             }
         }

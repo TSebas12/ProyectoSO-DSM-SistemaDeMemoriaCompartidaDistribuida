@@ -84,6 +84,25 @@ static void sleep_ms(uint32_t ms)
     nanosleep(&ts, NULL);
 }
 
+/* Entero decimal sin signo, con validación completa (nada de truncar). */
+static int parse_u32(const char *text, uint32_t *out)
+{
+    char         *end;
+    unsigned long v;
+
+    if (text == NULL || out == NULL || text[0] == '\0' ||
+        text[0] == '-' || text[0] == '+') {
+        return -1;
+    }
+    errno = 0;
+    v = strtoul(text, &end, 10);
+    if (errno != 0 || end == text || *end != '\0' || v > 0xFFFFFFFFul) {
+        return -1;
+    }
+    *out = (uint32_t)v;
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     const char    *config_path = "config/node0.conf";
@@ -97,6 +116,7 @@ int main(int argc, char **argv)
     uint32_t       frames_override = 0;
     int            serve = 0;
     int            check_only = 0;
+    int            app_rc = 0;
     int            i;
 
     /*
@@ -115,13 +135,25 @@ int main(int argc, char **argv)
         } else if (strcmp(argv[i], "--app") == 0 && i + 1 < argc) {
             app_name = argv[++i];
         } else if (strcmp(argv[i], "--size") == 0 && i + 1 < argc) {
-            opts.size = (uint32_t)strtoul(argv[++i], NULL, 10);
+            if (parse_u32(argv[++i], &opts.size) != 0) {
+                fprintf(stderr, "valor invalido para --size\n");
+                return 2;
+            }
         } else if (strcmp(argv[i], "--pages") == 0 && i + 1 < argc) {
-            opts.pages = (uint32_t)strtoul(argv[++i], NULL, 10);
+            if (parse_u32(argv[++i], &opts.pages) != 0) {
+                fprintf(stderr, "valor invalido para --pages\n");
+                return 2;
+            }
         } else if (strcmp(argv[i], "--iters") == 0 && i + 1 < argc) {
-            opts.iters = (uint32_t)strtoul(argv[++i], NULL, 10);
+            if (parse_u32(argv[++i], &opts.iters) != 0) {
+                fprintf(stderr, "valor invalido para --iters\n");
+                return 2;
+            }
         } else if (strcmp(argv[i], "--threads") == 0 && i + 1 < argc) {
-            opts.threads = (uint32_t)strtoul(argv[++i], NULL, 10);
+            if (parse_u32(argv[++i], &opts.threads) != 0) {
+                fprintf(stderr, "valor invalido para --threads\n");
+                return 2;
+            }
         } else if (strcmp(argv[i], "--file") == 0 && i + 1 < argc) {
             opts.file = argv[++i];
         } else if (strcmp(argv[i], "--nick") == 0 && i + 1 < argc) {
@@ -129,9 +161,15 @@ int main(int argc, char **argv)
         } else if (strcmp(argv[i], "--text") == 0 && i + 1 < argc) {
             opts.text = argv[++i];
         } else if (strcmp(argv[i], "--duration") == 0 && i + 1 < argc) {
-            opts.duration = (uint32_t)strtoul(argv[++i], NULL, 10);
+            if (parse_u32(argv[++i], &opts.duration) != 0) {
+                fprintf(stderr, "valor invalido para --duration\n");
+                return 2;
+            }
         } else if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
-            frames_override = (uint32_t)strtoul(argv[++i], NULL, 10);
+            if (parse_u32(argv[++i], &frames_override) != 0) {
+                fprintf(stderr, "valor invalido para --frames\n");
+                return 2;
+            }
         } else if (strcmp(argv[i], "--serve") == 0) {
             serve = 1;
         } else if (strcmp(argv[i], "--check-config") == 0) {
@@ -171,6 +209,8 @@ int main(int argc, char **argv)
     if (check_only) {
         printf("%s: OK (nodo %u, %u nodos en %s)\n",
                config_path, cfg.node_id, nodes.count, nodes_path);
+        printf("huella de configuracion: %08x\n",
+               dsm_config_fingerprint(&cfg, &nodes));
         dsm_nodes_print(&nodes, stdout);
         return 0;
     }
@@ -187,6 +227,7 @@ int main(int argc, char **argv)
     rt = calloc(1, sizeof(*rt));
     if (rt == NULL) {
         fprintf(stderr, "sin memoria para el runtime\n");
+        dsm_log_close();
         return 1;
     }
     {
@@ -197,6 +238,7 @@ int main(int argc, char **argv)
                     "nodo %u: fallo el arranque del runtime (%s, errno=%d: %s)\n",
                     cfg.node_id, dsm_status_name(rst), errno, strerror(errno));
             free(rt);
+            dsm_log_close();
             return 1;
         }
     }
@@ -205,6 +247,7 @@ int main(int argc, char **argv)
                 cfg.node_id);
         dsm_runtime_destroy(rt);
         free(rt);
+        dsm_log_close();
         return 1;
     }
     {
@@ -214,6 +257,13 @@ int main(int argc, char **argv)
             fprintf(stderr,
                     "nodo %u: no se pudieron levantar los servicios (%s, errno=%d: %s)\n",
                     cfg.node_id, dsm_status_name(sst), errno, strerror(errno));
+            /* Sin control/web/heartbeat el nodo no está operativo: no fingir
+             * que sí. La app se lanzaría sobre un runtime incompleto. */
+            dsm_detach(rt);
+            dsm_runtime_destroy(rt);
+            free(rt);
+            dsm_log_close();
+            return 1;
         }
     }
 
@@ -225,16 +275,21 @@ int main(int argc, char **argv)
         app = dsm_app_parse(app_name);
         if (app == DSM_APP_NONE) {
             fprintf(stderr, "aplicacion desconocida: %s\n", app_name);
+            dsm_detach(rt);
             dsm_runtime_destroy(rt);
             free(rt);
+            dsm_log_close();
             return 2;
         }
         printf("nodo %u: ejecutando aplicacion '%s'\n", cfg.node_id, app_name);
         if (app == DSM_APP_DEMO) {
-            dsm_demo_page_run(rt);
-        } else if (dsm_app_run(rt, app, &opts) != 0) {
-            fprintf(stderr, "nodo %u: la aplicacion '%s' reporto un fallo\n",
-                    cfg.node_id, app_name);
+            app_rc = dsm_demo_page_run(rt);
+        } else {
+            app_rc = dsm_app_run(rt, app, &opts);
+        }
+        if (app_rc != 0) {
+            fprintf(stderr, "nodo %u: la aplicacion '%s' reporto un fallo (%d)\n",
+                    cfg.node_id, app_name, app_rc);
         }
         dsm_runtime_print_stats(rt, stdout);
     }
@@ -251,5 +306,7 @@ int main(int argc, char **argv)
     dsm_runtime_destroy(rt);
     free(rt);
     dsm_log_close();
-    return 0;
+    /* El código de salida distingue un fallo de verificación (2) de un error
+     * de ejecución (1) para que los scripts de prueba no lo oculten. */
+    return (app_rc != 0) ? 3 : 0;
 }

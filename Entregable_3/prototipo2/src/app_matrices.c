@@ -98,6 +98,25 @@ int dsm_app_matrices_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
 
     if (opts->verify) {
         uint64_t bad = 0;
+        uint64_t ab_bad = 0;
+
+        /*
+         * Verificar A y B contra las fórmulas deterministas, además de C.
+         * Si no, una A/B obsoleta pasaría la verificación de C.
+         */
+        for (i = 0; i < n; i++) {
+            for (j = 0; j < n; j++) {
+                if (fabs(a[i * n + j] - (double)((i + j) % 7u + 1u)) > 1e-9 ||
+                    fabs(b[i * n + j] - (double)((i * j) % 5u + 1u)) > 1e-9) {
+                    ab_bad++;
+                }
+            }
+        }
+        if (ab_bad != 0) {
+            printf("nodo %u: matrices verificacion de A/B: FALLO (%llu discrepancias)\n",
+                   rank, (unsigned long long)ab_bad);
+            return 2;
+        }
 
         for (i = start; i < start + count; i++) {
             for (j = 0; j < n; j++) {

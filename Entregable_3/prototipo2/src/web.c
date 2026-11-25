@@ -314,9 +314,15 @@ dsm_web_t *dsm_web_start(dsm_runtime_t *rt)
     }
     setsockopt(web->listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     memset(&addr, 0, sizeof(addr));
-    addr.sin_family      = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port        = htons(rt->cfg.web_port);
+    addr.sin_family = AF_INET;
+    if (inet_pton(AF_INET,
+                  rt->cfg.bind_address[0] ? rt->cfg.bind_address : "0.0.0.0",
+                  &addr.sin_addr) != 1) {
+        close(web->listen_fd);
+        free(web);
+        return NULL;
+    }
+    addr.sin_port = htons(rt->cfg.web_port);
     if (bind(web->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) != 0 ||
         listen(web->listen_fd, 8) != 0) {
         close(web->listen_fd);

@@ -1,18 +1,22 @@
 /*
- * app_chat.c — Chat de texto libre entre nodos con seqlock.
+ * app_chat.c — Chat de texto libre entre nodos.
  *
  * Proyecto : Sistema de Memoria Compartida Distribuida (DSM)
  * Curso    : IC-6600 Principios de Sistemas Operativos
  * Entregable: Entrega final
  *
  * Cada nodo escribe en su propia página (una por nodo) de un arreglo DSM
- * compartido. Los demás nodos leen todas las páginas con un seqlock y
- * muestran los mensajes nuevos. No usa barreras en el bucle; solo al
- * inicio y al final.
+ * compartido. Tras cada mensaje se llama dsm_release() para que el home
+ * instale la copia y avise a los lectores; sin eso el dueño escribiría en
+ * su copia M y nadie vería nada. Los demás nodos sondean las páginas y
+ * muestran los mensajes nuevos.
  */
 #include "dsm_apps.h"
 
+#include <errno.h>
+#include <inttypes.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,36 +60,35 @@ static uint32_t now_sec(void)
 
 static void print_remote(chat_slot_t *slot, uint32_t *last_seq)
 {
-    uint32_t s1, s2;
     chat_slot_t copy;
+    uint32_t    s;
 
-    for (;;) {
-        s1 = atomic_load_explicit(&slot->seq, memory_order_acquire);
-        if (s1 == 0u) {
-            return;
-        }
-        memcpy(&copy, slot, sizeof(copy));
-        s2 = atomic_load_explicit(&slot->seq, memory_order_acquire);
-        if (s1 == s2) {
-            break;
-        }
+    s = atomic_load_explicit(&slot->seq, memory_order_acquire);
+    if (s == 0u || s <= *last_seq) {
+        return;
+    }
+    memcpy(&copy, slot, sizeof(copy));
+    /* Revalidar el seq tras la copia: si cambió, la instantánea se descarta. */
+    if (atomic_load_explicit(&slot->seq, memory_order_acquire) != s) {
+        return;
     }
     if (copy.magic != DSM_CHAT_MAGIC) {
+        return;
+    }
+    if (copy.len >= DSM_CHAT_TEXT) {
         return;
     }
     if (copy.checksum != fnv1a(copy.text, copy.len)) {
         return;
     }
-    if (s1 <= *last_seq) {
-        return;
-    }
-    *last_seq = s1;
-    copy.text[copy.len < DSM_CHAT_TEXT ? copy.len : DSM_CHAT_TEXT - 1] = '\0';
-    printf("[nodo %u] %s\n", copy.from, copy.text);
+    *last_seq = s;
+    copy.text[copy.len] = '\0';
+    printf("[nodo %" PRIu16 "] %s\n", copy.from, copy.text);
     fflush(stdout);
 }
 
-static void send_msg(chat_slot_t *slot, uint32_t from, const char *text)
+static void send_msg(dsm_runtime_t *rt, chat_slot_t *slot, uint32_t from,
+                     const char *text)
 {
     size_t len = strlen(text);
 
@@ -99,8 +102,14 @@ static void send_msg(chat_slot_t *slot, uint32_t from, const char *text)
     slot->checksum  = fnv1a(slot->text, len);
     slot->flags     = 0u;
     atomic_store_explicit(&slot->magic, DSM_CHAT_MAGIC, memory_order_relaxed);
-    atomic_store_explicit(&slot->seq, atomic_load_explicit(&slot->seq, memory_order_relaxed) + 1u,
+    atomic_store_explicit(&slot->seq,
+                          atomic_load_explicit(&slot->seq, memory_order_relaxed) + 1u,
                           memory_order_release);
+    /*
+     * Publicar el mensaje: sin dsm_release la copia queda en M y los lectores
+     * nunca se enteran.
+     */
+    (void)dsm_release(rt, slot, sizeof(*slot));
 }
 
 int dsm_app_chat_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
@@ -111,11 +120,14 @@ int dsm_app_chat_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
     char         *buf;
     chat_slot_t **slots;
     uint32_t     *last_seq;
-    const char   *nick;
+    char          nick[64];
     uint32_t      duration;
     uint32_t      start;
     int           running = 1;
 
+    if (rt == NULL || opts == NULL) {
+        return 1;
+    }
     if (nodes < 2u) {
         printf("nodo %u: chat: se necesitan al menos 2 nodos (hay %u)\n",
                rank, nodes);
@@ -131,7 +143,8 @@ int dsm_app_chat_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         fprintf(stderr, "nodo %u: chat: no se pudo reservar memoria\n", rank);
         return 1;
     }
-    memset(buf, 0, (size_t)nodes * (size_t)page_size);
+    /* No se borra el arreglo completo: cada nodo inicializa solo su página. */
+    memset(buf + (size_t)rank * page_size, 0, sizeof(chat_slot_t));
 
     slots = calloc(nodes, sizeof(*slots));
     last_seq = calloc(nodes, sizeof(*last_seq));
@@ -144,30 +157,34 @@ int dsm_app_chat_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         slots[i] = (chat_slot_t *)(buf + (size_t)i * page_size);
     }
 
-    nick = (opts != NULL && opts->nick != NULL && opts->nick[0] != '\0')
-           ? opts->nick : NULL;
-    /* nick por defecto */
-    char default_nick[32];
-    if (nick == NULL) {
-        snprintf(default_nick, sizeof(default_nick), "nodo%u", rank);
-        nick = default_nick;
+    if (opts->nick != NULL && opts->nick[0] != '\0') {
+        snprintf(nick, sizeof(nick), "%s", opts->nick);
+    } else {
+        snprintf(nick, sizeof(nick), "nodo%u", rank);
     }
 
-    duration = (opts != NULL) ? opts->duration : 0u;
-    if (opts != NULL && opts->text != NULL && opts->text[0] != '\0') {
-        send_msg(slots[rank], rank, opts->text);
-        printf("[tu] %s\n", opts->text);
-        fflush(stdout);
+    duration = opts->duration;
+    if (opts->text != NULL && opts->text[0] != '\0') {
         if (duration == 0u) {
             duration = 5u;
         }
     }
 
-    if (dsm_barrier(rt, 120000u) != 0) {
+    if (dsm_barrier(rt, 120000u) != DSM_OK) {
         fprintf(stderr, "nodo %u: chat: fallo la barrera inicial\n", rank);
         free(slots);
         free(last_seq);
         return 1;
+    }
+
+    /* Publicar el texto inicial después de la barrera. */
+    if (opts->text != NULL && opts->text[0] != '\0') {
+        char msg[DSM_CHAT_TEXT];
+
+        snprintf(msg, sizeof(msg), "%s", opts->text);
+        send_msg(rt, slots[rank], rank, msg);
+        printf("[tu] %s\n", msg);
+        fflush(stdout);
     }
 
     start = now_sec();
@@ -178,6 +195,7 @@ int dsm_app_chat_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
     while (running) {
         struct pollfd pfd;
         char          line[1024];
+
         /* Leer mensajes remotos. */
         for (uint32_t i = 0; i < nodes; i++) {
             if (i == rank) {
@@ -194,11 +212,28 @@ int dsm_app_chat_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         pfd.fd = STDIN_FILENO;
         pfd.events = POLLIN;
         pfd.revents = 0;
-        if (poll(&pfd, 1, DSM_CHAT_POLL_MS) <= 0) {
-            continue;
-        }
-        if (!(pfd.revents & POLLIN)) {
-            continue;
+        {
+            int r = poll(&pfd, 1, DSM_CHAT_POLL_MS);
+
+            if (r < 0) {
+                if (errno == EINTR) {
+                    break;
+                }
+                /* Error no recuperable: salir. */
+                running = 0;
+                break;
+            }
+            if (r == 0) {
+                continue;
+            }
+            if (!(pfd.revents & POLLIN)) {
+                /* POLLHUP/POLLERR/POLLNVAL: fin de entrada. */
+                if (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)) {
+                    running = 0;
+                    break;
+                }
+                continue;
+            }
         }
         if (fgets(line, sizeof(line), stdin) == NULL) {
             running = 0;
@@ -219,8 +254,8 @@ int dsm_app_chat_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
             continue;
         }
         if (strncmp(line, "/nick ", 6) == 0) {
-            /* no se puede reasignar puntero fácil; solo imprimir */
-            printf("nick cambiado a: %s\n", line + 6);
+            snprintf(nick, sizeof(nick), "%s", line + 6);
+            printf("nick cambiado a: %s\n", nick);
             fflush(stdout);
             continue;
         }
@@ -239,14 +274,18 @@ int dsm_app_chat_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
                 continue;
             }
         }
-        send_msg(slots[rank], rank, line);
-        printf("[tu] %s\n", line);
-        fflush(stdout);
+        {
+            char msg[DSM_CHAT_TEXT];
+
+            snprintf(msg, sizeof(msg), "%s: %s", nick, line);
+            send_msg(rt, slots[rank], rank, msg);
+            printf("[tu] %s\n", msg);
+            fflush(stdout);
+        }
     }
 
-    if (dsm_barrier(rt, 120000u) != 0) {
-        fprintf(stderr, "nodo %u: chat: fallo la barrera final\n", rank);
-    }
+    /* Barrera final best-effort: no bloquear si alguien salió antes. */
+    (void)dsm_barrier(rt, 10000u);
 
     free(slots);
     free(last_seq);

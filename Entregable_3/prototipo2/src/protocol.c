@@ -177,9 +177,18 @@ int dsm_protocol_decode(const uint8_t *buf, size_t len, dsm_msg_t *msg)
     msg->data_len    = h.payload_len;
 
     if (h.payload_len > 0) {
-        expected = dsm_checksum_fnv1a(buf + 64, h.payload_len);
-        if (h.checksum != 0 && expected != h.checksum) {
-            return -2;
+        if (h.payload_len == 0u) {
+            /* Frame vacío: el emisor pone checksum 0. */
+            if (h.checksum != 0u) {
+                return -2;
+            }
+        } else {
+            expected = dsm_checksum_fnv1a(buf + 64, h.payload_len);
+            /* La carga siempre se verifica: aceptar checksum 0 dejaba pasar
+             * cualquier frame corrupto sin detección. */
+            if (expected != h.checksum) {
+                return -2;
+            }
         }
         msg->data = malloc(h.payload_len);
         if (msg->data == NULL) {

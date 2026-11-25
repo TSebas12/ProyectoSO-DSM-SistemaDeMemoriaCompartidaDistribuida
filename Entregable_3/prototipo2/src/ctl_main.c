@@ -19,6 +19,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -81,6 +82,24 @@ static int connect_to(const char *host, uint16_t port, uint32_t timeout_ms)
     return fd;
 }
 
+static int parse_u32(const char *text, uint32_t *out)
+{
+    char         *end;
+    unsigned long v;
+
+    if (text == NULL || out == NULL || text[0] == '\0' ||
+        text[0] == '-' || text[0] == '+') {
+        return -1;
+    }
+    errno = 0;
+    v = strtoul(text, &end, 10);
+    if (errno != 0 || end == text || *end != '\0' || v > 0xFFFFFFFFul) {
+        return -1;
+    }
+    *out = (uint32_t)v;
+    return 0;
+}
+
 static int send_all(int fd, const char *buf, size_t len)
 {
     size_t sent = 0;
@@ -88,6 +107,9 @@ static int send_all(int fd, const char *buf, size_t len)
     while (sent < len) {
         ssize_t r = send(fd, buf + sent, len - sent, 0);
 
+        if (r < 0 && errno == EINTR) {
+            continue;
+        }
         if (r <= 0) {
             return -1;
         }
@@ -110,6 +132,9 @@ int main(int argc, char **argv)
     int           i;
 
     memset(&cfg, 0, sizeof(cfg));
+    /* Sin esto, escribir sobre un socket que el nodo ya cerró mata el cliente
+     * con SIGPIPE en vez de devolver un error legible. */
+    signal(SIGPIPE, SIG_IGN);
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
@@ -117,9 +142,18 @@ int main(int argc, char **argv)
         } else if (strcmp(argv[i], "--host") == 0 && i + 1 < argc) {
             host = argv[++i];
         } else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
-            port = (uint16_t)strtoul(argv[++i], NULL, 10);
+            uint32_t v;
+
+            if (parse_u32(argv[++i], &v) != 0 || v == 0u || v > 65535u) {
+                fprintf(stderr, "puerto invalido: %s\n", argv[i]);
+                return 2;
+            }
+            port = (uint16_t)v;
         } else if (strcmp(argv[i], "--timeout") == 0 && i + 1 < argc) {
-            timeout_ms = (uint32_t)strtoul(argv[++i], NULL, 10);
+            if (parse_u32(argv[++i], &timeout_ms) != 0 || timeout_ms == 0u) {
+                fprintf(stderr, "timeout invalido\n");
+                return 2;
+            }
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             usage(argv[0]);
             return 0;
@@ -195,11 +229,24 @@ int main(int argc, char **argv)
         ssize_t r;
 
         if (used + 1u >= CTL_REPLY_MAX) {
-            break;
+            fprintf(stderr, "aviso: respuesta truncada a %u bytes\n",
+                    (unsigned)used);
+            free(reply);
+            close(fd);
+            return 1;
         }
         r = recv(fd, reply + used, CTL_REPLY_MAX - used - 1u, 0);
-        if (r <= 0) {
+        if (r == 0) {
             break;
+        }
+        if (r < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            fprintf(stderr, "error leyendo la respuesta: %s\n", strerror(errno));
+            free(reply);
+            close(fd);
+            return 1;
         }
         used += (size_t)r;
     }

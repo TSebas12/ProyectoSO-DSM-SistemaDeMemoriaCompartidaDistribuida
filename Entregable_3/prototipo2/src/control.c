@@ -219,7 +219,10 @@ static void *control_loop(void *arg)
         if (n < 0) {
             write_all(cfd, "error\n", 6);
         } else {
-            write_all(cfd, out, (size_t)n);
+            /* snprintf devuelve lo que habría escrito: acotar al buffer. */
+            size_t nout = ((size_t)n < sizeof(out)) ? (size_t)n : sizeof(out);
+
+            write_all(cfd, out, nout);
         }
         close(cfd);
     }
@@ -250,9 +253,15 @@ dsm_control_t *dsm_control_start(dsm_runtime_t *rt)
     }
     setsockopt(ctl->listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     memset(&addr, 0, sizeof(addr));
-    addr.sin_family      = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port        = htons(rt->cfg.control_port);
+    addr.sin_family = AF_INET;
+    if (inet_pton(AF_INET,
+                  rt->cfg.bind_address[0] ? rt->cfg.bind_address : "0.0.0.0",
+                  &addr.sin_addr) != 1) {
+        close(ctl->listen_fd);
+        free(ctl);
+        return NULL;
+    }
+    addr.sin_port = htons(rt->cfg.control_port);
     if (bind(ctl->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) != 0 ||
         listen(ctl->listen_fd, 8) != 0) {
         close(ctl->listen_fd);

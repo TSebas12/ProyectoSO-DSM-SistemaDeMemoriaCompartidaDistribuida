@@ -127,6 +127,12 @@ static int write_msg_fd(dsm_net_t *net, int fd, const dsm_msg_t *msg)
     size_t   len;
     size_t   sent = 0;
 
+    if (net == NULL || msg == NULL) {
+        return -1;
+    }
+    if (msg->data_len > net->cfg.max_message_size) {
+        return -1;
+    }
     if (dsm_protocol_encode(msg, &buf, &len) != 0) {
         return -1;
     }
@@ -170,7 +176,13 @@ int dsm_net_read_full(int fd, void *buf, size_t n)
 
     while (got < n) {
         ssize_t r = recv(fd, (char *)buf + got, n - got, 0);
-        if (r <= 0) {
+        if (r < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        if (r == 0) {
             return -1;
         }
         got += (size_t)r;
@@ -538,9 +550,25 @@ static void serve_connection(dsm_net_t *net, int cfd)
          */
         if (h.reserved2 != 0u && net->cluster_hash != 0u &&
             h.reserved2 != net->cluster_hash) {
+            dsm_msg_t err;
+
             DSM_LOG(DSM_LOG_WARN,
                     "net: config mismatch en conexion entrante: local=%08x remoto=%08x",
                     net->cluster_hash, h.reserved2);
+            /*
+             * Enviar un frame de error con la huella local antes de cerrar,
+             * para que el emisor lo reciba como DSM_ERR_CONFIG_MISMATCH en
+             * lugar de un timeout ciego. write_msg_fd pone reserved2 = hash
+             * local, que es lo que el emisor compara.
+             */
+            memset(&err, 0, sizeof(err));
+            err.type        = DSM_MSG_ERROR;
+            err.status      = (int32_t)DSM_ERR_CONFIG_MISMATCH;
+            err.src_node    = net->cfg.node_id;
+            err.dst_node    = h.src_node;
+            err.request_id  = h.request_id;
+            err.page_id     = h.page_id;
+            (void)write_msg_fd(net, cfd, &err);
             break;
         }
         total = 64u + h.payload_len;
@@ -670,6 +698,15 @@ static void *listener_loop(void *arg)
             if (!atomic_load_explicit(&net->running, memory_order_acquire)) {
                 break;
             }
+            if (errno == EMFILE || errno == ENFILE || errno == ENOBUFS ||
+                errno == ENOMEM) {
+                /* Descriptores agotados: no girar al 100 % de CPU. */
+                struct timespec ts;
+
+                ts.tv_sec  = 0;
+                ts.tv_nsec = 100000000L; /* 100 ms */
+                nanosleep(&ts, NULL);
+            }
             continue;
         }
         set_nodelay(cfd);
@@ -781,10 +818,26 @@ dsm_status_t dsm_net_start(dsm_net_t *net)
     }
     if (net->worker_count == 0) {
         atomic_store_explicit(&net->running, 0, memory_order_release);
+        if (net->listen_fd >= 0) {
+            close(net->listen_fd);
+            net->listen_fd = -1;
+        }
         return DSM_ERR_NET;
     }
     if (pthread_create(&net->listener_thread, NULL, listener_loop, net) != 0) {
         atomic_store_explicit(&net->running, 0, memory_order_release);
+        if (net->q_ready && dsm_mutex_lock(&net->q_lock) == DSM_OK) {
+            dsm_cond_broadcast(&net->q_cond);
+            dsm_mutex_unlock(&net->q_lock);
+        }
+        for (i = 0; i < net->worker_count; i++) {
+            pthread_join(net->workers[i], NULL);
+        }
+        net->worker_count = 0;
+        if (net->listen_fd >= 0) {
+            close(net->listen_fd);
+            net->listen_fd = -1;
+        }
         return DSM_ERR_NET;
     }
     net->started = 1;

@@ -42,6 +42,9 @@ static int parse_unsigned(const char *v, unsigned long *out)
     char          *end;
     unsigned long  value;
 
+    if (v == NULL || v[0] == '\0' || v[0] == '-' || v[0] == '+') {
+        return -1;
+    }
     errno = 0;
     value = strtoul(v, &end, 10);
     if (errno != 0 || *end != '\0' || end == v) {
@@ -354,7 +357,8 @@ dsm_status_t dsm_config_validate(const dsm_config_t *cfg)
     if (cfg->heartbeat_timeout_ms < 2u * cfg->heartbeat_interval_ms) {
         return DSM_ERR_INVAL;
     }
-    if (cfg->max_message_size < cfg->page_size + 256u) {
+    if (cfg->max_message_size < cfg->page_size + 256u ||
+        cfg->max_message_size > 64u * 1024u * 1024u) {
         return DSM_ERR_INVAL;
     }
     if (cfg->retry_count > 10u) {
@@ -396,6 +400,13 @@ uint32_t dsm_config_fingerprint(const dsm_config_t *cfg, const dsm_nodes_t *node
     MIX(cfg->port_range_start);
     MIX(cfg->port_range_end);
     MIX(cfg->replication_factor);
+    MIX(cfg->max_message_size);
+    MIX(cfg->heartbeat_interval_ms);
+    MIX(cfg->heartbeat_timeout_ms);
+    MIX(cfg->network_timeout_ms);
+    MIX(cfg->connect_timeout_ms);
+    MIX(cfg->thread_pool_size);
+    MIX(cfg->barrier_timeout_ms);
     MIX(DSM_PROTOCOL_VERSION);
 
     if (nodes != NULL) {

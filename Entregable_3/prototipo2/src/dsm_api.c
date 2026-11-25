@@ -93,6 +93,18 @@ dsm_status_t dsm_init(const dsm_config_t *cfg, dsm_runtime_t **out)
         return DSM_ERR_INVAL;
     }
     *out = NULL;
+    /*
+     * La tabla trivial de abajo indexa peer[cfg->node_id]: hay que validar la
+     * configuración y el rango antes de escribir, o un node_id grande
+     * corrompería el stack.
+     */
+    if (cfg->node_id >= DSM_MAX_PEERS) {
+        return DSM_ERR_INVAL;
+    }
+    st = dsm_config_validate(cfg);
+    if (st != DSM_OK) {
+        return st;
+    }
 
     /*
      * dsm_init no conoce la tabla de nodos: la carga el binario (node_main) y
@@ -200,6 +212,33 @@ uint64_t dsm_addr_to_page(dsm_runtime_t *rt, const void *addr)
         return DSM_INVALID_PAGE_ID;
     }
     return dsm_memory_addr_to_page(&rt->mem, addr);
+}
+
+dsm_status_t dsm_release(dsm_runtime_t *rt, void *ptr, size_t len)
+{
+    uint64_t     first;
+    uint64_t     last;
+    uint64_t     page;
+    dsm_status_t st = DSM_OK;
+
+    if (rt == NULL || ptr == NULL || len == 0u) {
+        return DSM_ERR_INVAL;
+    }
+    first = dsm_memory_addr_to_page(&rt->mem, ptr);
+    last  = dsm_memory_addr_to_page(&rt->mem,
+                                    (const void *)((const uint8_t *)ptr + len - 1u));
+    if (first == DSM_INVALID_PAGE_ID || last == DSM_INVALID_PAGE_ID ||
+        last < first) {
+        return DSM_ERR_INVAL;
+    }
+    for (page = first; page <= last; page++) {
+        dsm_status_t s = dsm_coherence_release_page(&rt->co, page);
+
+        if (s != DSM_OK) {
+            st = s;
+        }
+    }
+    return st;
 }
 
 /* --- Sincronización ------------------------------------------------------ */

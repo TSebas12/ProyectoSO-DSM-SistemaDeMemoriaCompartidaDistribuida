@@ -214,10 +214,6 @@ void dsm_runtime_destroy(dsm_runtime_t *rt)
     if (rt == NULL) {
         return;
     }
-    if (rt->hb != NULL) {
-        dsm_heartbeat_stop(rt->hb);
-        rt->hb = NULL;
-    }
     if (rt->web != NULL) {
         dsm_web_stop(rt->web);
         rt->web = NULL;
@@ -225,6 +221,11 @@ void dsm_runtime_destroy(dsm_runtime_t *rt)
     if (rt->ctl != NULL) {
         dsm_control_stop(rt->ctl);
         rt->ctl = NULL;
+    }
+    /* Detener heartbeat después de web/ctl: format_nodes/nodes leen rt->hb. */
+    if (rt->hb != NULL) {
+        dsm_heartbeat_stop(rt->hb);
+        rt->hb = NULL;
     }
     if (atomic_load(&rt->running)) {
         dsm_fault_shutdown();

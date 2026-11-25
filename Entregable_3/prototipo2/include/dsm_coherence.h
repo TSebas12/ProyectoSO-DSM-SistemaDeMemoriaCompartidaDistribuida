@@ -170,6 +170,15 @@ dsm_msi_state_t dsm_msi_next_state(dsm_msi_state_t current, dsm_msi_event_t ev);
 /* Resuelve un fallo: trae la página, publica permisos y actualiza el MSI.  */
 dsm_status_t dsm_coherence_handle_fault(dsm_coherence_t *co, const dsm_fault_req_t *req);
 
+/*
+ * Publica una página que este nodo tiene en M y suelta la copia local.
+ * Equivale a un writeback seguido de invalidación: el home instala los datos
+ * y avisa a los demás sharers. Se usa desde dsm_release() para que una
+ * escritura que quedaría silenciosa en una copia M (p. ej. el chat) llegue a
+ * los lectores.
+ */
+dsm_status_t dsm_coherence_release_page(dsm_coherence_t *co, uint64_t page_id);
+
 /* --- Mensajes entrantes (lado servidor) --------------------------------- */
 /*
  * Se llama con los mensajes que el nodo debe atender como servidor:

@@ -572,12 +572,21 @@ static dsm_status_t home_ensure_data(dsm_coherence_t *co, uint64_t page_id,
                     p->meta.msi_state = (uint8_t)DSM_PAGE_M;
                 }
             } else if (obj != DSM_INVALID_OBJECT) {
-                /* Primera materialización de una página de objeto: ceros. */
-                if (dsm_memory_fill(co->mem, page_id, 0) != DSM_OK) {
-                    dsm_mutex_unlock(&p->lock);
-                    return DSM_ERR_NO_SPACE;
+                /*
+                 * Primera materialización de una página de objeto: ceros.
+                 *
+                 * Solo se rellena si el estado MSI es I. Si es S o M el
+                 * contenido sigue en la ventana aunque la residencia sea
+                 * FETCHING o NOT_RESIDENT (es el caso normal cuando el home
+                 * sube de S a M); borrarlo perdería datos.
+                 */
+                if (p->meta.msi_state == (uint8_t)DSM_PAGE_I) {
+                    if (dsm_memory_fill(co->mem, page_id, 0) != DSM_OK) {
+                        dsm_mutex_unlock(&p->lock);
+                        return DSM_ERR_NO_SPACE;
+                    }
+                    p->meta.msi_state = (uint8_t)DSM_PAGE_M;
                 }
-                p->meta.msi_state = (uint8_t)DSM_PAGE_M;
             } else {
                 dsm_mutex_unlock(&p->lock);
                 return DSM_ERR_NOENT;
@@ -687,12 +696,25 @@ static dsm_status_t coherence_evict_one(dsm_coherence_t *co, uint64_t avoid_page
     dirty = (p->meta.is_dirty != 0);
     if (dirty) {
         buf = malloc(page_size);
-        if (buf != NULL &&
-            dsm_memory_copy_out(co->mem, victim, buf, page_size) != DSM_OK) {
-            free(buf);
+        if (buf == NULL) {
             dsm_mutex_unlock(&p->lock);
-            return DSM_ERR_STATE;
+            return DSM_ERR_NOMEM;
         }
+    }
+    /*
+     * Marcar EVICTING y quitar el permiso de escritura antes de copiar: la
+     * aplicación no puede modificar la página mientras se captura ni mientras
+     * dura el RPC; su siguiente acceso espera a que la expulsión termine.
+     */
+    p->meta.residency = (uint8_t)DSM_RES_EVICTING;
+    (void)dsm_memory_protect(co->mem, victim, DSM_PAGE_I);
+    if (dirty && dsm_memory_copy_out(co->mem, victim, buf, page_size) != DSM_OK) {
+        p->meta.residency = (uint8_t)DSM_RES_RESIDENT;
+        (void)dsm_memory_protect(co->mem, victim, (dsm_msi_state_t)state);
+        dsm_cond_broadcast(&p->cond);
+        dsm_mutex_unlock(&p->lock);
+        free(buf);
+        return DSM_ERR_STATE;
     }
     dsm_mutex_unlock(&p->lock);
 
@@ -703,6 +725,12 @@ static dsm_status_t coherence_evict_one(dsm_coherence_t *co, uint64_t avoid_page
             DSM_LOG(DSM_LOG_ERROR, "no se pudo escribir al swap la pagina %llu",
                     (unsigned long long)victim);
             free(buf);
+            if (dsm_mutex_lock(&p->lock) == DSM_OK) {
+                p->meta.residency = (uint8_t)DSM_RES_RESIDENT;
+                (void)dsm_memory_protect(co->mem, victim, (dsm_msi_state_t)state);
+                dsm_cond_broadcast(&p->cond);
+                dsm_mutex_unlock(&p->lock);
+            }
             return DSM_ERR_NO_SPACE;
         }
         stats_add(co->stats, DSM_STAT_SWAP_BYTES, (uint64_t)page_size);
@@ -716,6 +744,12 @@ static dsm_status_t coherence_evict_one(dsm_coherence_t *co, uint64_t avoid_page
             DSM_LOG(DSM_LOG_WARN, "no se pudo liberar la pagina %llu al home: %d",
                     (unsigned long long)victim, (int)st);
             free(buf);
+            if (dsm_mutex_lock(&p->lock) == DSM_OK) {
+                p->meta.residency = (uint8_t)DSM_RES_RESIDENT;
+                (void)dsm_memory_protect(co->mem, victim, (dsm_msi_state_t)state);
+                dsm_cond_broadcast(&p->cond);
+                dsm_mutex_unlock(&p->lock);
+            }
             return st;
         }
         DSM_LOG(DSM_LOG_DEBUG, "evict: page %llu released to home OK",
@@ -726,7 +760,7 @@ static dsm_status_t coherence_evict_one(dsm_coherence_t *co, uint64_t avoid_page
     if (dsm_mutex_lock(&p->lock) != DSM_OK) {
         return DSM_ERR_STATE;
     }
-    if (p->meta.residency == (uint8_t)DSM_RES_RESIDENT &&
+    if (p->meta.residency == (uint8_t)DSM_RES_EVICTING &&
         p->meta.msi_state == state) {
         p->meta.msi_state = (uint8_t)DSM_PAGE_I;
         p->meta.residency = (uint8_t)DSM_RES_NOT_RESIDENT;
@@ -742,7 +776,12 @@ static dsm_status_t coherence_evict_one(dsm_coherence_t *co, uint64_t avoid_page
             dsm_memory_release_frame(co->mem, p->meta.frame_slot);
             p->meta.frame_slot = DSM_INVALID_FRAME;
         }
+    } else if (p->meta.residency == (uint8_t)DSM_RES_EVICTING) {
+        /* La página cambió de estado durante el RPC: devolverla al servicio. */
+        p->meta.residency = (uint8_t)DSM_RES_RESIDENT;
+        (void)dsm_memory_protect(co->mem, victim, (dsm_msi_state_t)p->meta.msi_state);
     }
+    dsm_cond_broadcast(&p->cond);
     dsm_mutex_unlock(&p->lock);
 
     stats_inc(co->stats, DSM_STAT_EVICTIONS);
@@ -943,6 +982,13 @@ static dsm_status_t home_serve_read(dsm_coherence_t *co, dsm_dir_entry_t *d,
         }
         d->meta.owner_node = co->home_node;
         d->meta.state      = (uint8_t)DSM_PAGE_S;
+        /*
+         * El home también es un sharer: su copia local se degrada a S para
+         * que la próxima escritura pase por el protocolo e invalide a los
+         * demás. Sin esto el home escribiría sin avisar y los lectores
+         * quedarían obsoletos de forma permanente.
+         */
+        (void)local_install(co, page_id, NULL, DSM_PAGE_S);
     }
 
     if (requester < 64u) {
@@ -1030,6 +1076,101 @@ static dsm_status_t home_serve_write(dsm_coherence_t *co, dsm_dir_entry_t *d,
     }
     dsm_mutex_unlock(&d->op_lock);
     return DSM_OK;
+}
+
+/* --- Publicación explícita (dsm_release) --------------------------------- */
+dsm_status_t dsm_coherence_release_page(dsm_coherence_t *co, uint64_t page_id)
+{
+    dsm_page_entry_t *p;
+    uint8_t          *buf = NULL;
+    uint32_t          page_size;
+    uint8_t           state;
+    int               dirty;
+    dsm_status_t      st = DSM_OK;
+
+    if (co == NULL || !co->initialized) {
+        return DSM_ERR_INVAL;
+    }
+    page_size = dsm_memory_page_size(co->mem);
+    p = dsm_memory_page_lookup(co->mem, page_id);
+    if (p == NULL) {
+        return DSM_OK;              /* nunca se tocó en este nodo */
+    }
+    if (dsm_mutex_lock(&p->lock) != DSM_OK) {
+        return DSM_ERR_STATE;
+    }
+    if (p->meta.residency != (uint8_t)DSM_RES_RESIDENT ||
+        p->meta.msi_state == (uint8_t)DSM_PAGE_I) {
+        dsm_mutex_unlock(&p->lock);
+        return DSM_OK;
+    }
+    state = p->meta.msi_state;
+    dirty = (p->meta.is_dirty != 0);
+
+    if (dirty) {
+        buf = malloc(page_size);
+        if (buf == NULL) {
+            dsm_mutex_unlock(&p->lock);
+            return DSM_ERR_NOMEM;
+        }
+        /*
+         * Bloquear escrituras mientras se captura la instantánea evita
+         * publicar datos rasgados o perder una escritura concurrente.
+         */
+        p->meta.residency = (uint8_t)DSM_RES_EVICTING;
+        (void)dsm_memory_protect(co->mem, page_id, DSM_PAGE_I);
+        if (dsm_memory_copy_out(co->mem, page_id, buf, page_size) != DSM_OK) {
+            p->meta.residency = (uint8_t)DSM_RES_RESIDENT;
+            (void)dsm_memory_protect(co->mem, page_id, (dsm_msi_state_t)state);
+            dsm_cond_broadcast(&p->cond);
+            dsm_mutex_unlock(&p->lock);
+            free(buf);
+            return DSM_ERR_STATE;
+        }
+        p->meta.residency = (uint8_t)DSM_RES_RESIDENT;
+        dsm_cond_broadcast(&p->cond);
+    }
+    dsm_mutex_unlock(&p->lock);
+
+    if (co->node_id == co->home_node) {
+        dsm_dir_entry_t *d = dir_lock_entry(co, page_id);
+        uint64_t         others;
+        uint32_t         node;
+
+        if (d == NULL) {
+            free(buf);
+            return DSM_ERR_NOMEM;
+        }
+        others = d->meta.sharers & ~(1ull << co->home_node);
+        for (node = 0; node < 64u; node++) {
+            if ((others & (1ull << node)) == 0ull) {
+                continue;
+            }
+            st = invalidate_node(co, page_id, node, 0, NULL, NULL);
+            if (st != DSM_OK) {
+                dsm_mutex_unlock(&d->op_lock);
+                free(buf);
+                return st;
+            }
+            d->meta.sharers &= ~(1ull << node);
+        }
+        d->meta.sharers   |= (1ull << co->home_node);
+        d->meta.owner_node = co->home_node;
+        d->meta.state      = (uint8_t)DSM_PAGE_S;
+        d->meta.version++;
+        d->meta.last_update_ms = dsm_now_ms();
+        /* Los datos ya están en la copia local: solo se baja a S. */
+        (void)local_install(co, page_id, NULL, DSM_PAGE_S);
+        dsm_mutex_unlock(&d->op_lock);
+    } else {
+        st = release_to_home(co, page_id, dirty ? buf : NULL,
+                             dirty ? page_size : 0u);
+        if (st == DSM_OK) {
+            local_drop(co, page_id);
+        }
+    }
+    free(buf);
+    return st;
 }
 
 /* --- Resolución de fallos ----------------------------------------------- */
@@ -1121,10 +1262,17 @@ dsm_status_t dsm_coherence_handle_fault(dsm_coherence_t *co, const dsm_fault_req
     for (;;) {
         dsm_residency_t res = (dsm_residency_t)page->meta.residency;
 
-        if (res == DSM_RES_FETCHING) {
-            if (dsm_cond_wait(&page->cond, &page->lock) != DSM_OK) {
+        if (res == DSM_RES_FETCHING || res == DSM_RES_EVICTING) {
+            /*
+             * Otra ruta está trayendo o expulsando la página. Se espera con
+             * límite: una espera infinita dentro del manejador de SIGSEGV
+             * dejaría el hilo bloqueado para siempre si el resolutor muere.
+             */
+            if (dsm_cond_timedwait(&page->cond, &page->lock,
+                                   co->timeout_ms) != DSM_OK) {
                 dsm_mutex_unlock(&page->lock);
-                return DSM_ERR_STATE;
+                stats_inc(co->stats, DSM_STAT_TIMEOUTS);
+                return DSM_ERR_TIMEOUT;
             }
             continue;
         }
@@ -1314,10 +1462,23 @@ static dsm_status_t handle_page_forward(dsm_coherence_t *co, const dsm_msg_t *ms
         return send_error(co, msg, DSM_ERR_NOENT);
     }
 
-    if (dsm_memory_copy_out(co->mem, msg->page_id, buf, page_size) != DSM_OK) {
-        dsm_mutex_unlock(&page->lock);
-        free(buf);
-        return send_error(co, msg, DSM_ERR_STATE);
+    /*
+     * Bloquear escritores antes de capturar la instantánea: si la aplicación
+     * escribe entre copy_out y mprotect, esa escritura no viaja al receptor y
+     * además se pierde al liberar la copia local.
+     */
+    {
+        uint8_t prev = page->meta.msi_state;
+
+        page->meta.residency = (uint8_t)DSM_RES_EVICTING;
+        dsm_memory_protect(co->mem, msg->page_id, DSM_PAGE_I);
+        if (dsm_memory_copy_out(co->mem, msg->page_id, buf, page_size) != DSM_OK) {
+            page->meta.residency = (uint8_t)DSM_RES_RESIDENT;
+            dsm_memory_protect(co->mem, msg->page_id, (dsm_msi_state_t)prev);
+            dsm_mutex_unlock(&page->lock);
+            free(buf);
+            return send_error(co, msg, DSM_ERR_STATE);
+        }
     }
     exclusive = (msg->flags & DSM_FLAG_LAST) != 0u;
     nuevo = exclusive ? DSM_PAGE_I : DSM_PAGE_S;
@@ -1331,7 +1492,10 @@ static dsm_status_t handle_page_forward(dsm_coherence_t *co, const dsm_msg_t *ms
             dsm_memory_release_frame(co->mem, page->meta.frame_slot);
             page->meta.frame_slot = DSM_INVALID_FRAME;
         }
+    } else {
+        page->meta.residency = (uint8_t)DSM_RES_RESIDENT;
     }
+    dsm_cond_broadcast(&page->cond);
     dsm_mutex_unlock(&page->lock);
 
     {
@@ -1352,7 +1516,31 @@ static dsm_status_t handle_invalidate(dsm_coherence_t *co, const dsm_msg_t *msg)
     int               had_copy = 0;
 
     page = dsm_memory_page_lookup(co->mem, msg->page_id);
-    if (page != NULL && dsm_mutex_lock(&page->lock) == DSM_OK) {
+    if (page != NULL) {
+        uint32_t waited = 0u;
+
+        /*
+         * Si la página está en FETCHING/EVICTING hay una operación en curso.
+         * Confirmar la invalidación sin esperar dejaría dos copias M (o una S
+         * que ya nunca se invalidaría). Se espera con límite y, si no termina,
+         * se devuelve error para que el home no conceda la propiedad.
+         */
+        for (;;) {
+            if (dsm_mutex_lock(&page->lock) != DSM_OK) {
+                return send_error(co, msg, DSM_ERR_STATE);
+            }
+            if (page->meta.residency != (uint8_t)DSM_RES_FETCHING &&
+                page->meta.residency != (uint8_t)DSM_RES_EVICTING) {
+                break;
+            }
+            dsm_cond_timedwait(&page->cond, &page->lock, 5u);
+            dsm_mutex_unlock(&page->lock);
+            waited += 5u;
+            if (waited >= co->timeout_ms) {
+                stats_inc(co->stats, DSM_STAT_TIMEOUTS);
+                return send_error(co, msg, DSM_ERR_TIMEOUT);
+            }
+        }
         if (page->meta.residency == (uint8_t)DSM_RES_RESIDENT &&
             page->meta.msi_state != (uint8_t)DSM_PAGE_I) {
             had_copy = 1;
@@ -1439,12 +1627,49 @@ static dsm_status_t handle_page_release(dsm_coherence_t *co, const dsm_msg_t *ms
         d->meta.sharers &= ~(1ull << msg->src_node);
     }
     if (d->meta.owner_node == msg->src_node) {
-        if (msg->data != NULL && msg->data_len == page_size) {
-            st = local_install(co, msg->page_id, msg->data, DSM_PAGE_S);
+        uint64_t others;
+        uint32_t node;
+
+        /*
+         * El dueño suelta sin datos: el home no puede reclamar una copia que
+         * no tiene. Se rechaza el release para que el cliente conserve la
+         * suya en lugar de perderla.
+         */
+        if (msg->data == NULL || msg->data_len != page_size) {
+            if (msg->src_node < 64u) {
+                d->meta.sharers |= (1ull << msg->src_node);
+            }
+            dsm_mutex_unlock(&d->op_lock);
+            return send_error(co, msg, DSM_ERR_STATE);
         }
-        d->meta.owner_node = co->home_node;
-        d->meta.state = (d->meta.sharers != 0ull) ? (uint8_t)DSM_PAGE_S
-                                                  : (uint8_t)DSM_PAGE_I;
+        st = local_install(co, msg->page_id, msg->data, DSM_PAGE_S);
+        if (st != DSM_OK) {
+            if (msg->src_node < 64u) {
+                d->meta.sharers |= (1ull << msg->src_node);
+            }
+            dsm_mutex_unlock(&d->op_lock);
+            return send_error(co, msg, st);
+        }
+        /*
+         * Publicación de una escritura: invalidar a los demás sharers para
+         * que no queden copias S obsoletas tras el release.
+         */
+        others = d->meta.sharers & ~(1ull << msg->src_node) &
+                 ~(1ull << co->home_node);
+        for (node = 0; node < 64u; node++) {
+            if ((others & (1ull << node)) == 0ull) {
+                continue;
+            }
+            st = invalidate_node(co, msg->page_id, node, 0, NULL, NULL);
+            if (st != DSM_OK) {
+                dsm_mutex_unlock(&d->op_lock);
+                return send_error(co, msg, st);
+            }
+            d->meta.sharers &= ~(1ull << node);
+        }
+        d->meta.sharers    |= (1ull << co->home_node);
+        d->meta.owner_node  = co->home_node;
+        d->meta.state       = (uint8_t)DSM_PAGE_S;
     } else if (d->meta.sharers == 0ull && d->meta.owner_node == co->home_node) {
         d->meta.state = (uint8_t)DSM_PAGE_I;
     }

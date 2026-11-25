@@ -46,6 +46,14 @@ void        *dsm_calloc(dsm_runtime_t *rt, size_t count, size_t size);
 void         dsm_free(dsm_runtime_t *rt, void *ptr);
 /* Traduce una dirección de la ventana a page_id global. */
 uint64_t     dsm_addr_to_page(dsm_runtime_t *rt, const void *addr);
+/*
+ * Publica y suelta las páginas del rango [ptr, ptr+len) que este nodo tenga
+ * en M. El home instala los datos y avisa a los demás sharers; las copias
+ * locales quedan en I. Sin esta llamada una escritura sobre la propia página
+ * en M nunca se propaga (el dueño escribe en local y los lectores conservan
+ * su copia S). Es la primitiva que usa el chat tras cada mensaje.
+ */
+dsm_status_t dsm_release(dsm_runtime_t *rt, void *ptr, size_t len);
 
 /* --- Sincronización ------------------------------------------------------ */
 dsm_status_t dsm_barrier(dsm_runtime_t *rt, uint32_t timeout_ms);
