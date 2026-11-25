@@ -83,6 +83,94 @@ El repositorio Git registra commits de ambos integrantes y el historial de evolu
 *Fin de la sección 3.*
 
 
+# 4. Introducción
+
+## 4.1 Problema
+
+En un sistema de memoria compartida tradicional, todos los procesos acceden a un mismo espacio de memoria física gestionado por el sistema operativo. Cuando los procesos residen en máquinas distintas, no existe un espacio de memoria compartido de forma nativa: cada nodo tiene su propia memoria y la comunicación se realiza por mensajes. Esto obliga al programador a repartir datos y sincronizar explícitamente, lo que complica el desarrollo de aplicaciones paralelas y distribuidas.
+
+El problema que resuelve este proyecto es: **cómo ofrecer a los procesos de varios nodos una única región de memoria lógicamente compartida**, de manera que el programador use punteros normales (`dsm_malloc`/`dsm_free`) mientras el runtime se encarga de traer las páginas bajo demanda, mantener la coherencia entre copias y sincronizar los nodos.
+
+## 4.2 Objetivos
+
+### 4.2.1 Objetivo general
+
+Implementar un Sistema de Memoria Compartida Distribuida (DSM) en espacio de usuario, sobre Linux, con paginación bajo demanda y coherencia a nivel de página mediante el protocolo MSI, capaz de ejecutar aplicaciones reales sobre 2 a 4 nodos y demostrarse en vivo.
+
+### 4.2.2 Objetivos específicos
+
+1. Diseñar e implementar un runtime DSM modular (memoria virtual, red, protocolo, coherencia, sincronización, fallos, CLI, web) en C11.
+2. Proveer la API pública `dsm_malloc`/`dsm_free`/`dsm_barrier`/`dsm_node_id`/`dsm_node_count` para las aplicaciones.
+3. Implementar la coherencia MSI con un directorio por página en el nodo home y transferencia/invalidación/writeback por TCP.
+4. Implementar la paginación bajo demanda con `mmap`, `mprotect` y manejador `SIGSEGV`.
+5. Implementar sincronización entre hilos y nodos (Pthreads, semáforos POSIX, atómicos, barrera centralizada).
+6. Implementar expulsión LRU aproximada con swap local en el home.
+7. Desarrollar aplicaciones de prueba: matrices, archivo, counter, bench, evict y chat.
+8. Documentar el sistema (informe técnico, manual de usuario) y demostrarlo en vivo.
+
+## 4.3 Alcance
+
+### 4.3.1 Incluido
+
+- Hasta 16 nodos configurables (ideal 4, mínimo 2 para pruebas).
+- Páginas de 4 KB, memoria por nodo configurable (por defecto 1 MB).
+- Coherencia MSI a nivel de página.
+- Expulsión LRU aproximada con swap local en el home.
+- Heartbeat y detección de nodos caídos.
+- Interfaz web de observación y CLI `dsmctl`.
+- Aplicaciones de prueba reales.
+
+### 4.3.2 Excluido (trabajo futuro)
+
+- Ejecución distribuida de procesos (Extra 1): no implementado; documentado como diseño.
+- Tolerancia a fallos por replicación (Extra 2): no implementado; `replication_factor = 0`.
+- Despliegue multi-máquina con IPs reales: pendiente de la versión final; las pruebas se realizan en `127.0.0.1`.
+- Persistencia de checkpoint: `checkpoint_interval_ms = 0`.
+
+## 4.4 Estructura del documento
+
+El documento se organiza en 21 secciones: portada, resumen ejecutivo, índice, introducción, marco teórico, arquitectura final, módulos implementados, diagrama de estados MSI, concurrencia, interbloqueos, estructuras y archivos, API, protocolo, aplicaciones de prueba, pruebas de uso y ejecución, rendimiento, extras, manual de usuario, conclusiones, referencias y anexos.
+
+# 5. Marco teórico
+
+## 5.1 Sistema de Memoria Compartida Distribuida (DSM)
+
+Un DSM (Distributed Shared Memory) es una abstracción que permite que procesos en máquinas distintas compartan un único espacio de memoria lógico, a pesar de que la memoria física está distribuida. El programador accede a la memoria compartida mediante operaciones normales de lectura/escritura sobre punteros; el runtime se encarga de localizar la página que contiene la dirección, traerla si no está presente y mantener la coherencia entre copias.
+
+## 5.2 Paginación bajo demanda
+
+La memoria compartida se divide en **páginas** (en este sistema, de 4 KB). Cada nodo reserva una región de memoria virtual del tamaño total del espacio compartido mediante `mmap` con protección inicial `PROT_NONE`. Cuando el programa accede a una dirección no residente, el hardware genera un `SIGSEGV`; el manejador instalado por el runtime identifica la página, solicita su contenido al nodo que la posee y la instala con `mprotect(PROT_READ|PROT_WRITE)` (o `PROT_READ` según el estado MSI). Este mecanismo evita traer páginas que nunca se usan.
+
+## 5.3 Coherencia MSI
+
+MSI es un protocolo de coherencia de caché con tres estados por bloque (página):
+
+- **M (Modified):** la página fue modificada localmente; es la única copia válida y debe hacerse writeback al home al expulsarla.
+- **S (Shared):** la página es de solo lectura y puede existir en varios nodos simultáneamente.
+- **I (Invalid):** la página no es válida en este nodo; un acceso genera fallo de página.
+
+Las transiciones se disparan por fallos de página locales y por mensajes de invalidación/remisión provenientes de otros nodos. El directorio (en el nodo home) registra, para cada página, el nodo owner y la lista de sharers.
+
+## 5.4 Señales
+
+El runtime usa `sigaction` para instalar un manejador de `SIGSEGV` (y `SIGBUS`). El manejador corre en el contexto del hilo que causó el fallo y delega la resolución a `fault_resolver`, que determina la página, su estado y la acción a tomar (traer, invalidar, writeback). Se evita hacer trabajo pesado dentro del manejador para no violar las restricciones de async-signal-safety.
+
+## 5.5 Sockets
+
+La comunicación entre nodos se realiza por TCP/IP. Cada nodo abre un socket de escucha en su puerto DSM y mantiene conexiones persistentes con los demás nodos (pool de conexiones). Los mensajes tienen una cabecera fija de 64 bytes y un payload variable. El hilo de red (`net_thread`) atiende las conexiones entrantes y despacha los mensajes a los handlers correspondientes.
+
+## 5.6 Pthreads y semáforos
+
+La concurrencia interna se gestiona con Pthreads (hilos de red, de heartbeat, de aplicación), variables de condición, semáforos POSIX y operaciones atómicas (`_Atomic`, `atomic_fetch_add`). La barrera centralizada sincroniza a todos los nodos participantes antes de iniciar una fase de una aplicación.
+
+## 5.7 Heartbeat
+
+Cada nodo envía periódicamente un `PING` a los demás nodos y actualiza su tabla de estado (`alive[]`, `last_seen_ms[]`). Si un nodo no responde dentro del timeout configurado, se marca como caído y se notifica a la capa de fallos. El heartbeat se ejecuta en un hilo dedicado (`heartbeat_thread`).
+
+## 5.8 LRU y swap
+
+La política de reemplazo es LRU aproximada basada en un bit de referencia por marco. Cuando se necesita un marco libre y no hay, se elige la página menos recientemente usada, se hace writeback si está en estado M y se guarda en swap local (solo en el home). Las páginas expulsadas se marcan como no residentes.
+
 # 6. Arquitectura final
 
 ## 6.1 Vista de despliegue
@@ -727,6 +815,140 @@ Cada error tiene código, mensaje legible, nodo y `request_id` para trazabilidad
 *Fin de la sección 13.*
 
 
+# 14. Aplicaciones de prueba
+
+Todas las aplicaciones usan el espacio DSM mediante `dsm_malloc` y se sincronizan con la barrera centralizada. Se ejecutan con `--app <nombre>`.
+
+## 14.1 Matrices (`matrices`)
+
+Multiplicación de matrices por bloques sobre el espacio compartido. Cada nodo calcula un bloque de la matriz resultado `C = A × B`. Al finalizar, todos los nodos verifican que `C` coincida con la referencia calculada localmente. Imprime `verificacion: OK` y el número de discrepancias. Parámetro `--size N` (tamaño de la matriz).
+
+## 14.2 Archivo (`file`)
+
+Distribuye un archivo (por defecto uno generado de 1 MB) entre los nodos, calcula un checksum por bloque y lo compara contra el checksum completo esperado (`0xc2dc9dc5`). Imprime `checksum completo = 0x..., OK`. Parámetro `--file RUTA` para usar un archivo real. Si el archivo no existe, reporta `abortado (archivo no disponible)` y código de salida distinto de 0.
+
+## 14.3 Counter (`counter`)
+
+Incrementos concurrentes: cada nodo/hilo incrementa un contador compartido. Al finalizar, el nodo 0 suma todos los contadores y compara contra el esperado (`nodos × hilos × iters`). Imprime `suma = X, esperado = Y, OK`. Parámetros `--iters N` y `--threads N`.
+
+## 14.4 Bench (`bench`)
+
+Mide latencia de acceso local y remoto, y de escritura, sobre páginas compartidas. Imprime latencias en us/op por nodo. Parámetro `--iters N` (número de operaciones).
+
+## 14.5 Evict (`evict`)
+
+Fuerza expulsiones/swap escribiendo más páginas que marcos disponibles. Imprime `verificacion OK` y el número de expulsiones. Parámetros `--pages N --frames M`.
+
+## 14.6 Chat (`chat`)
+
+Aplicación de texto libre interactivo: los mensajes escritos en un nodo se propagan a los demás por el espacio compartido. Comandos: `/nick`, `/help`, `/quit`. Parámetros `--nick`, `--duration`, `--text`, `--serve`.
+
+## 14.7 Stress (`stress`)
+
+Combina `matrices 192` y `counter 100×2` para probar el sistema bajo carga combinada.
+
+## 14.8 Resultados esperados
+
+| App | Salida esperada | Código de salida |
+|---|---|---|
+| matrices | `verificacion: OK (0 discrepancias)` | 0 |
+| file | `checksum completo = 0xc2dc9dc5, OK` | 0 |
+| counter | `suma = esperado, OK` | 0 |
+| bench | latencias impresas, sin crash | 0 |
+| evict | `verificacion OK`, expulsiones > 0 | 0 |
+| chat | mensajes cruzan entre nodos | 0 |
+| file (archivo inexistente) | `abortado (archivo no disponible)` | ≠ 0 |
+
+# 15. Pruebas de uso y ejecución
+
+## 15.1 Escenarios
+
+| Escenario | Nodos | App | Objetivo |
+|---|---|---|---|
+| S1 | 2 | demo | Humo: página compartida y barrera = 3 |
+| S2 | 2 | matrices 64 | Coherencia básica |
+| S3 | 2 | matrices 192 | Coherencia con carga |
+| S4 | 2 | file | Checksum distribuido |
+| S5 | 2 | counter 20×2 | Incrementos sin pérdida |
+| S6 | 2 | bench 2000 | Latencias |
+| S7 | 2 | evict 64p/32m | Expulsión y swap |
+| S8 | 2 | chat | Mensajes cruzados |
+| S9 | 2 | stress | Carga combinada |
+| S10 | 4 (loopback) | matrices 128 | Escalabilidad |
+| S11 | 4 (loopback) | counter 2000×4 | Escalabilidad |
+
+## 15.2 Procedimiento
+
+1. Compilar: `make clean && make`.
+2. Generar topología con `./dsm.sh` (opción 1) y validar (opción 11): huella idéntica en todos los nodos.
+3. Arrancar nodo 0 (home) y luego los demás, esperando `listo`.
+4. Ejecutar la app y capturar salida de cada nodo + `stats.json`.
+5. Detener con `pkill -f dsm_node`.
+
+## 15.3 Resultados medidos
+
+| Escenario | Resultado | Tiempo | Observaciones |
+|---|---|---|---|
+| S1 demo | OK (fallos 2/2, reenvios 1, barreras 3, errores 0) | ~2 s | OK |
+| S2 matrices 64 | OK (0 discrepancias, fallos 20/20, errores 0) | ~60 s | OK |
+| S3 matrices 192 | no ejecutado en esta corrida | - | pendiente |
+| S4 file | OK (checksum 0xc2dc9dc5, 2 bloques, fallos 262/130, errores 0) | ~60 s | OK |
+| S5 counter 100×2 | OK (suma 400 = esperado, fallos 4/3, errores 0) | ~2 s | OK |
+| S6 bench 2000 | OK (latencias impresas, errores 0) | ~2 s | OK |
+| S7 evict 64p/32m | OK (expulsiones 64, residentes 32, suma 2048, errores 0) | ~60 s | OK |
+| S8 chat | OK (mensajes cruzan: [nodo 1] bob: hola desde bob) | ~8 s | OK |
+| S9 stress | no ejecutado en esta corrida | - | pendiente |
+| S10 matrices 64 (4n) | OK (0 discrepancias x4, fallos 18 c/u, errores 0) | ~60 s | OK |
+| S11 counter 2000×4 (4n) | no ejecutado en esta corrida | - | pendiente |
+
+## 15.4 Problemas encontrados y resueltos
+
+- **Arranque desfasado:** si los nodos arrancan con varios segundos de diferencia, el heartbeat reporta errores/reintentos aunque ambos estén vivos. Mitigación: arrancar A, esperar `listo`, luego B.
+- **Barrera expirada:** si una barrera expira, la app ahora aborta en lugar de reportar OK con datos incompletos.
+- **Handoff de ownership (4 nodos simultáneos):** resuelto conservando la copia del home hasta confirmar la instalación en el solicitante.
+- **Chat con stdin cerrado:** corregido para no entrar en bucle.
+
+## 15.5 Evidencia
+
+Las capturas de salida, logs (`logs/dsm-nodeN.log`) y `stats.json` se incluyen en el anexo 21.
+
+# 16. Rendimiento
+
+## 16.1 Métricas
+
+| Métrica | Descripción | Unidad |
+|---|---|---|
+| Latencia de acceso local | Tiempo por acceso a página residente | us/op |
+| Latencia de acceso remoto | Tiempo por acceso a página no residente (fallo de página + transferencia) | us/op |
+| Latencia de escritura | Tiempo por escritura que dispara invalidación | us/op |
+| Throughput | Páginas transferidas por segundo | páginas/s |
+| Uso de memoria | Marcos residentes / marcos totales | % |
+| Expulsiones | Páginas expulsadas a swap | count |
+
+## 16.2 Resultados de bench
+
+| Nodo | Local (us/op) | Remoto (us/op) | Escritura (us/op) |
+|---|---|---|---|
+| nodo 0 | 0.00 | 83.03 | 31.72 |
+| nodo 1 | 0.00 | 59.03 | 54.03 |
+
+Nota: la latencia "local" del nodo que también atiende al peer puede estar contaminada por el servicio a la red; se reporta el valor medido y se documenta la contaminación.
+
+## 16.3 Speedup
+
+Speedup observado con N nodos respecto a 1 nodo (matrices): [MEDIR]. El speedup es sublineal por el overhead de coherencia y transferencia de páginas.
+
+## 16.4 Uso de memoria
+
+| Configuración | Marcos totales | Marcos usados (pico) | % |
+|---|---|---|---|
+| 2 nodos, matrices 192 | [MEDIR] | [MEDIR] | [MEDIR] |
+| 4 nodos, matrices 128 | [MEDIR] | [MEDIR] | [MEDIR] |
+
+## 16.5 Overhead de coherencia
+
+El overhead se mide como el tiempo extra por invalidación y writeback respecto a un acceso local. Se reporta en el anexo 21 junto con los logs de `stats.json`.
+
 # 17. Extras
 
 ## 17.1 Decisión sobre extras
@@ -794,6 +1016,98 @@ Estrategia:
 
 *Fin de la sección 17.*
 
+
+# 18. Manual de usuario
+
+## 18.1 Requisitos
+
+- Linux (x86_64), `gcc`, `make`, `bash`.
+- Red entre nodos (loopback para pruebas locales; 2–4 PCs para el laboratorio).
+- Repositorio clonado y actualizado a `origin/main`.
+
+Verificación:
+
+```bash
+gcc --version
+make --version
+```
+
+## 18.2 Compilación
+
+```bash
+cd Entregable_3/prototipo2
+make clean && make
+ls -l dsm_node dsmctl
+```
+
+## 18.3 Configuración
+
+Usar `./dsm.sh`:
+
+1. Opción 1 — Configurar nodos: elegir 2, 3 o 4 nodos e ingresar las IPs.
+2. Opción 2 — Elegir rol de esta máquina (A/B/C/D).
+3. Opción 11 — Validar configuración: debe imprimir `OK` para cada nodo y la misma huella en todos.
+
+Alternativa manual: editar `config/nodeN.conf` y `config/nodes_N.conf` (no recomendado).
+
+## 18.4 Arranque
+
+- Opción 4 — Arrancar el nodo escuchando.
+- Opción 5 — Arrancar el nodo con una aplicación.
+
+Manualmente:
+
+```bash
+# Nodo 0 (home)
+./dsm_node --config config/node0.conf --nodes config/nodes_2.conf --app demo --serve &
+# Nodo 1
+./dsm_node --config config/node1.conf --nodes config/nodes_2.conf --app demo
+```
+
+## 18.5 Comandos CLI (`dsmctl`)
+
+```bash
+./dsmctl --config config/node0.conf stats    # estadísticas
+./dsmctl --config config/node0.conf pages    # páginas locales
+./dsmctl --config config/node0.conf dir      # directorio (solo home)
+./dsmctl --config config/node0.conf nodes    # nodos + heartbeat
+./dsmctl --config config/node0.conf config   # huella de configuración
+```
+
+## 18.6 Panel web
+
+Si `web_enabled=1`: `http://127.0.0.1:27303/` y `http://127.0.0.1:27303/stats.json`.
+
+## 18.7 Aplicaciones
+
+| App | Comando típico |
+|---|---|
+| demo | `--app demo` |
+| matrices | `--app matrices --size 128` |
+| file | `--app file` / `--app file --file RUTA` |
+| counter | `--app counter --iters 100 --threads 2` |
+| bench | `--app bench --iters 2000` |
+| evict | `--app evict --pages 64 --frames 32` |
+| chat | `--app chat --nick alice --duration 20` |
+| stress | `--app stress` |
+
+## 18.8 Solución de problemas
+
+- **bind: Address already in use:** nodo anterior no terminó. `pkill -f dsm_node`, esperar 2 s, reintentar.
+- **config mismatch:** comparar `dsmctl config` en cada nodo; revisar `page_size`, `node_memory`, `max_message_size`, `port_range_*`, tabla de nodos.
+- **no se pudo conectar:** el home (nodo 0) no está corriendo o `seed_host`/`seed_port` mal.
+- **Timeouts en matrices/file:** arrancar los nodos con menos de 2 min de diferencia (barrera inicial espera 60 s).
+- **Chat no muestra nada:** verificar que ambos nodos hayan pasado la barrera inicial y que la duración no haya expirado; revisar `logs/dsm-nodeN.log`.
+- **Logs:** `tail -f logs/dsm-node0.log`.
+
+## 18.9 Detener todo
+
+```bash
+./dsm.sh   # opción 8 (stop)
+# o
+pkill -f dsm_node
+rm -f logs/*.log
+```
 
 # 19. Conclusiones
 
@@ -870,4 +1184,60 @@ Los datos provienen de corridas ejecutadas y registradas (no son estimaciones):
 
 *Fin de la sección 19.*
 
+
+# 20. Referencias
+
+1. Tanenbaum, A. S., & Bos, H. (2015). *Modern Operating Systems* (4th ed.). Pearson.
+2. Silberschatz, A., Galvin, P. B., & Gagne, G. (2018). *Operating System Concepts* (10th ed.). Wiley.
+3. Li, K., & Hudak, P. (1989). Memory coherence in shared virtual memory systems. *ACM Transactions on Computer Systems*, 7(4), 321–359.
+4. Keleher, P., Cox, A. L., Dwarkadas, S., & Zwaenepoel, W. (1994). TreadMarks: Distributed shared memory on standard workstations and operating systems. *Proceedings of the USENIX Winter 1994 Technical Conference*.
+5. IEEE Std 1003.1-2017 (POSIX.1-2017). *Standard for Information Technology — Portable Operating System Interface*.
+6. The Linux man-pages project. `mmap(2)`, `mprotect(2)`, `sigaction(2)`, `pthread(7)`.
+7. Beej's Guide to Network Programming (sockets TCP/IP).
+8. Repositorio del proyecto: https://github.com/TSebas12/ProyectoSO-DSM-SistemaDeMemoriaCompartidaDistribuida
+
+## 20.1 Evidencia de Git
+
+- Commits de ambos integrantes durante las semanas de trabajo (ver anexo 21.5).
+- Enlace al repositorio Git: incluido arriba.
+
+# 21. Anexos
+
+## 21.1 Logs
+
+Logs por nodo en `logs/dsm-nodeN.log`. Incluyen fallos de página, invalidaciones, expulsiones, reenvíos y errores.
+
+## 21.2 Capturas
+
+Capturas de salida de cada aplicación (A y B) y de `stats.json`, organizadas por escenario (S1–S11).
+
+## 21.3 Tablas
+
+- Tabla de nodos (`config/nodes_N.conf`).
+- Tabla de páginas locales (`dsmctl pages`).
+- Directorio de páginas (`dsmctl dir`).
+
+## 21.4 Gráficos
+
+[MEDIR] Latencias por nodo, speedup vs N nodos, uso de memoria pico.
+
+## 21.5 Evidencia de Git
+
+```bash
+git log --oneline --all --graph
+git shortlog -sn
+```
+
+Verificar que ambos integrantes tengan commits propios.
+
+## 21.6 Configuración de ejemplo
+
+Ejemplo para 2 nodos en loopback (`config/nodes_2.conf`):
+
+```
+0 127.0.0.1 27300
+1 127.0.0.1 27304
+```
+
+Huella de configuración: [MEDIR] (debe ser idéntica en todos los nodos).
 
