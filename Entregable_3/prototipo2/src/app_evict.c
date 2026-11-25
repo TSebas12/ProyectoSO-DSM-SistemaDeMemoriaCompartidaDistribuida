@@ -91,6 +91,7 @@ int dsm_app_evict_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
                    rank, bad);
             return 2;
         }
+        printf("nodo %u: evict: verificacion OK\n", rank);
     }
     if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
         fprintf(stderr, "nodo %u: evict: fallo la barrera tras la lectura\n", rank);

@@ -27,6 +27,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "dsm_control.h"
@@ -46,7 +47,25 @@ static void resolver_loop_body(dsm_runtime_t *rt)
             break;
         }
         {
-            dsm_status_t st = dsm_coherence_handle_fault(&rt->co, &req);
+            dsm_status_t st = DSM_ERR_STATE;
+            int          attempt;
+
+            for (attempt = 0; attempt < 5; attempt++) {
+                st = dsm_coherence_handle_fault(&rt->co, &req);
+                if (st == DSM_OK) {
+                    break;
+                }
+                /*
+                 * La ventana de handoff de propiedad (el home concede y suelta
+                 * su copia antes de que el nuevo dueño la instale) puede hacer
+                 * que un reenvío transitorio devuelva NOENT. Reintentar con
+                 * una espera corta evita matar el proceso por una carrera.
+                 */
+                if (attempt < 4) {
+                    struct timespec ts = { 0, 10000000L }; /* 10 ms */
+                    nanosleep(&ts, NULL);
+                }
+            }
 
             if (st != DSM_OK) {
                 /*

@@ -254,6 +254,11 @@ int dsm_app_chat_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
             continue;
         }
         if (strncmp(line, "/nick ", 6) == 0) {
+            if (strlen(line + 6) >= sizeof(nick)) {
+                printf("nick demasiado largo (max %zu)\n", sizeof(nick) - 1);
+                fflush(stdout);
+                continue;
+            }
             snprintf(nick, sizeof(nick), "%s", line + 6);
             printf("nick cambiado a: %s\n", nick);
             fflush(stdout);
