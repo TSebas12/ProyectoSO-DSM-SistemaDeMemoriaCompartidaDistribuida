@@ -26,11 +26,15 @@ Fuerza expulsiones/swap escribiendo más páginas que marcos disponibles. Imprim
 
 Aplicación de texto libre interactivo: los mensajes escritos en un nodo se propagan a los demás por el espacio compartido. Comandos: `/nick`, `/help`, `/quit`. Parámetros `--nick`, `--duration`, `--text`, `--serve`.
 
-## 14.7 Stress (`stress`)
+## 14.7 Task (`task`) — Extra 1
+
+Ejecución distribuida de una tarea: el coordinador (nodo 0) prepara un arreglo compartido de N valores; cada nodo procesa su porción en paralelo (suma de cuadrados) y publica su resultado parcial en DSM; el coordinador recolecta, verifica contra una referencia secuencial y reporta speedup y balance de carga. Parámetro `--size N` (cantidad de elementos; por defecto 1 000 000).
+
+## 14.8 Stress (`stress`)
 
 Combina `matrices 192` y `counter 100×2` para probar el sistema bajo carga combinada.
 
-## 14.8 Resultados esperados
+## 14.9 Resultados esperados
 
 | App | Salida esperada | Código de salida |
 |---|---|---|
@@ -40,4 +44,5 @@ Combina `matrices 192` y `counter 100×2` para probar el sistema bajo carga comb
 | bench | latencias impresas, sin crash | 0 |
 | evict | `verificacion OK`, expulsiones > 0 | 0 |
 | chat | mensajes cruzan entre nodos | 0 |
+| task | `speedup=X.XX, balance=Y.YY, OK` | 0 |
 | file (archivo inexistente) | `abortado (archivo no disponible)` | ≠ 0 |
