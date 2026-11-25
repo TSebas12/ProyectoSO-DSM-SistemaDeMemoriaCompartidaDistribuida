@@ -30,7 +30,9 @@ Estrategia:
 
 **Riesgos:** complejidad adicional, necesidad de un planificador, sincronización de tareas, manejo de fallos de trabajadores.
 
-**Estado:** implementación opcional, time-boxed, sujeta al gate del miércoles 25 de noviembre. Si no se completa, se documenta el diseño y el motivo.
+**Estado:** IMPLEMENTADO. Se agrego la aplicacion `task` (Extra 1) que ejecuta una tarea distribuida: el coordinador (nodo 0) prepara un arreglo compartido, cada nodo procesa su porcion en paralelo y publica su resultado parcial en DSM; el coordinador recolecta, verifica contra una referencia secuencial y reporta speedup y balance de carga. Se ejecuta con `--app task --size N`. Metricas impresas: speedup, balance, tiempo secuencial vs paralelo.
+
+**Estado previo (diseño):** implementacion opcional, time-boxed, sujeta al gate del miercoles 25 de noviembre.ón opcional, time-boxed, sujeta al gate del miércoles 25 de noviembre. Si no se completa, se documenta el diseño y el motivo.
 
 ## 17.3 Extra 2 — Tolerancia a fallos y redundancia (10 %)
 

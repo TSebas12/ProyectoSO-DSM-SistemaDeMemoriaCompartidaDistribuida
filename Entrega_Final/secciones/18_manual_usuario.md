@@ -70,6 +70,7 @@ Si `web_enabled=1`: `http://127.0.0.1:27303/` y `http://127.0.0.1:27303/stats.js
 | bench | `--app bench --iters 2000` |
 | evict | `--app evict --pages 64 --frames 32` |
 | chat | `--app chat --nick alice --duration 20` |
+| task | `--app task --size 1000000` |
 | stress | `--app stress` |
 
 ## 18.8 Solución de problemas

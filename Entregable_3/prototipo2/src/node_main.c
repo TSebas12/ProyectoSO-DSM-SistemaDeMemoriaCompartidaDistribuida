@@ -58,7 +58,7 @@ static void usage(const char *prog)
     printf("uso: %s [opciones]\n"
            "  --config RUTA     archivo del nodo (def. config/node0.conf)\n"
            "  --nodes RUTA      tabla de nodos (def. config/nodes.conf)\n"
-           "  --app NOMBRE      demo|matrices|file|counter|bench|evict|chat\n"
+           "  --app NOMBRE      demo|matrices|file|counter|bench|evict|chat|task\n"
            "  --size N          lado de la matriz o bytes del archivo\n"
            "  --pages N         paginas para bench/evict\n"
            "  --iters N         iteraciones de las aplicaciones\n"

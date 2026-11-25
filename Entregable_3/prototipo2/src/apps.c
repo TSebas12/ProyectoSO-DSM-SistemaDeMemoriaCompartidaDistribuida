@@ -39,6 +39,7 @@ dsm_app_kind_t dsm_app_parse(const char *name)
     if (strcmp(name, "bench") == 0)    { return DSM_APP_BENCH; }
     if (strcmp(name, "evict") == 0)    { return DSM_APP_EVICT; }
     if (strcmp(name, "chat") == 0)     { return DSM_APP_CHAT; }
+    if (strcmp(name, "task") == 0)     { return DSM_APP_TASK; }
     return DSM_APP_NONE;
 }
 
@@ -52,6 +53,7 @@ const char *dsm_app_name(dsm_app_kind_t kind)
     case DSM_APP_BENCH:    return "bench";
     case DSM_APP_EVICT:    return "evict";
     case DSM_APP_CHAT:     return "chat";
+    case DSM_APP_TASK:     return "task";
     default:               return "none";
     }
 }
@@ -82,6 +84,8 @@ int dsm_app_run(dsm_runtime_t *rt, dsm_app_kind_t kind,
         return dsm_app_evict_run(rt, opts);
     case DSM_APP_CHAT:
         return dsm_app_chat_run(rt, opts);
+    case DSM_APP_TASK:
+        return dsm_app_task_run(rt, opts);
     case DSM_APP_DEMO:
         return dsm_demo_page_run(rt);
     default:

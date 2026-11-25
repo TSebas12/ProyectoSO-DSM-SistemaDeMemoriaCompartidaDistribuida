@@ -29,6 +29,7 @@ NODE_SRC := \
 	src/app_bench.c \
 	src/app_evict.c \
 	src/app_chat.c \
+	src/app_task.c \
 	src/control.c \
 	src/web.c \
 	src/heartbeat.c

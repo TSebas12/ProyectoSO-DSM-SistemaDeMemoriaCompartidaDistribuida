@@ -23,7 +23,8 @@ typedef enum dsm_app_kind {
     DSM_APP_COUNTER  = 4,   /* incrementos concurrentes (coherencia)      */
     DSM_APP_BENCH    = 5,   /* latencia y throughput de páginas           */
     DSM_APP_EVICT    = 6,   /* presión de memoria para forzar LRU         */
-    DSM_APP_CHAT     = 7    /* chat de texto libre entre nodos            */
+    DSM_APP_CHAT     = 7,   /* chat de texto libre entre nodos            */
+    DSM_APP_TASK     = 8    /* ejecucion distribuida de una tarea (Extra 1) */
 } dsm_app_kind_t;
 
 typedef struct dsm_app_opts {
@@ -53,5 +54,6 @@ int dsm_app_counter_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts);
 int dsm_app_bench_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts);
 int dsm_app_evict_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts);
 int dsm_app_chat_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts);
+int dsm_app_task_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts);
 
 #endif /* DSM_APPS_H */
