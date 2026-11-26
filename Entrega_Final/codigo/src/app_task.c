@@ -47,7 +47,7 @@ int dsm_app_task_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
     double  *results;   /* una ranura por nodo, en páginas separadas */
     uint64_t start, count;
     uint64_t i;
-    uint64_t t0, t1, tseq0, tseq1;
+    uint64_t t0 = 0, t1 = 0, tseq0 = 0, tseq1 = 0;
     double   sequential = 0.0;
     double   parallel   = 0.0;
     uint64_t max_time = 0, min_time = ~0ULL;
