@@ -44,7 +44,7 @@ int dsm_app_task_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
     uint64_t n = (opts != NULL && opts->size != 0) ? (uint64_t)opts->size
                                                     : APP_TASK_DEFAULT_N;
     double  *input;
-    double  *results;   /* una ranura por nodo, en páginas separadas */
+    uint8_t *results;   /* una ranura por nodo, en páginas separadas */
     uint64_t start, count;
     uint64_t i;
     uint64_t t0 = 0, t1 = 0, tseq0 = 0, tseq1 = 0;
@@ -73,7 +73,9 @@ int dsm_app_task_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         fprintf(stderr, "nodo %u: task: no se pudo reservar memoria\n", rank);
         return 1;
     }
-    memset(results, 0, (size_t)nodes * (size_t)page_size);
+    if (rank == 0) {
+        memset(results, 0, (size_t)nodes * (size_t)page_size);
+    }
 
     /* --- Coordinador prepara la tarea --- */
     if (rank == 0) {
@@ -108,18 +110,15 @@ int dsm_app_task_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
             partial += input[i] * input[i];
         }
         t1 = dsm_app_now_us();
-
         /* Publicar resultado en la ranura propia (una página por nodo). */
         {
             task_result_t *slot = (task_result_t *)(results +
                                      (size_t)rank * page_size);
+
             slot->node_id  = rank;
             slot->partial  = partial;
             slot->items    = count;
             slot->time_us  = t1 - t0;
-            /* Forzar publicación: dsm_release no existe en API pública de forma
-               directa para structs, pero la escritura en M ya es visible tras
-               la barrera (la página se materializa y se comparte). */
         }
     }
     if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {

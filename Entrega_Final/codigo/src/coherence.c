@@ -1070,6 +1070,18 @@ static dsm_status_t home_serve_write(dsm_coherence_t *co, dsm_dir_entry_t *d,
          * página y puede esperar hasta 200 ms; si se ejecutara con el op_lock
          * tomado se invertiría el orden de locks.
          */
+        /*
+         * Proteger la página local del home antes de cederla: evita que el
+         * home escriba en ella durante la ventana de handoff.
+         */
+        {
+            dsm_page_entry_t *hp = dsm_memory_page_lookup(co->mem, page_id);
+            if (hp != NULL) {
+                (void)dsm_mutex_lock(&hp->lock);
+                dsm_memory_protect(co->mem, page_id, DSM_PAGE_I);
+                dsm_mutex_unlock(&hp->lock);
+            }
+        }
         dsm_mutex_unlock(&d->op_lock);
         local_drop(co, page_id);
         return DSM_OK;
@@ -1277,8 +1289,13 @@ dsm_status_t dsm_coherence_handle_fault(dsm_coherence_t *co, const dsm_fault_req
             continue;
         }
         if (res == DSM_RES_ERROR) {
-            dsm_mutex_unlock(&page->lock);
-            return DSM_ERR_PAGE_FAULT;
+            /*
+             * Permitir un reintento de resolucion para errores transitorios
+             * (red, recursos). Se resetea a NO_RESIDENTE una sola vez por
+             * llamada; si vuelve a fallar, se deja en ERROR (fail-stop).
+             */
+            page->meta.residency = (uint8_t)DSM_RES_NOT_RESIDENT;
+            res = DSM_RES_NOT_RESIDENT;
         }
         if (res == DSM_RES_RESIDENT) {
             dsm_msi_state_t state = (dsm_msi_state_t)page->meta.msi_state;

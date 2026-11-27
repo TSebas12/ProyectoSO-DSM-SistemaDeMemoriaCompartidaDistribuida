@@ -77,6 +77,7 @@ static uint64_t map_addr_to_page(const void *addr)
         return DSM_INVALID_PAGE_ID;
     }
     a    = (uintptr_t)addr;
+
     base = (uintptr_t)g_q.map.window_base;
 
     if (a < base || a >= base + (uintptr_t)g_q.map.window_size) {
@@ -86,24 +87,36 @@ static uint64_t map_addr_to_page(const void *addr)
     return g_q.map.page_base_id + index;
 }
 
+#if !defined(__x86_64__)
+#error "Este DSM requiere arquitectura x86-64 (Linux). El manejo de SIGSEGV y paginacion bajo demanda dependen de registros x86-64."
+#endif
+
 /*
- * x86-64 deja el motivo del fallo en REG_ERR: el bit 1 indica escritura.
- * En otras arquitecturas se asume escritura, que es la política conservadora
- * descrita en el E1 (se pide propiedad en lugar de una copia compartida).
+ * x86-64 deja el motivo del fallo en REG_ERR:
+ * - bit 0 (0x1): P (pagina no presente) -> fallo de pagina.
+ * - bit 1 (0x2): W/R (escritura vs lectura).
+ * - bit 4 (0x10): I/D (fetch de instruccion vs datos).
+ *
+ * Solo se aceptan fallos de datos (lectura/escritura). Un fallo de ejecucion
+ * (I/D=1) indica un acceso a codigo, que el DSM no puede resolver y debe
+ * rechazar para no enmascarar errores de seguridad o bugs de programa.
  */
 static dsm_fault_kind_t decode_kind(void *uctx)
 {
-#if defined(__x86_64__)
     ucontext_t *uc = (ucontext_t *)uctx;
 
-    if (uc != NULL && (uc->uc_mcontext.gregs[REG_ERR] & 0x2) != 0) {
-        return DSM_FAULT_WRITE;
+    if (uc != NULL) {
+        unsigned long err = uc->uc_mcontext.gregs[REG_ERR];
+        if ((err & 0x10) != 0) {
+            /* Bit 4 = I/D: acceso a instruccion (ejecucion). Rechazar. */
+            return DSM_FAULT_EXEC;
+        }
+        if ((err & 0x2) != 0) {
+            return DSM_FAULT_WRITE;
+        }
+        return DSM_FAULT_READ;
     }
-    return DSM_FAULT_READ;
-#else
-    (void)uctx;
     return DSM_FAULT_UNKNOWN;
-#endif
 }
 
 /* Restaura el manejador anterior y relanza: la señal no era del DSM.      */
@@ -229,6 +242,12 @@ static void dsm_segv_handler(int sig, siginfo_t *si, void *uctx)
     ctx->pending_page    = page_id;
     ctx->pending_request = 0;
     ctx->fault_kind      = (int)decode_kind(uctx);
+    if (ctx->fault_kind == (int)DSM_FAULT_EXEC) {
+        fault_diag("fallo de ejecucion (I/D=1) rechazado", si);
+        sigprocmask(SIG_SETMASK, &oldmask, NULL);
+        reraise(sig);
+        return;
+    }
     atomic_store_explicit(&ctx->in_fault, 1, memory_order_seq_cst);
 
     req.page_id        = page_id;
