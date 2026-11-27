@@ -27,6 +27,7 @@
 #include "dsm_api.h"
 #include "dsm_apps.h"
 #include "dsm_config.h"
+#include "dsm_heartbeat.h"
 #include "dsm_log.h"
 #include "dsm_nodes.h"
 #include "dsm_runtime.h"
@@ -264,6 +265,39 @@ int main(int argc, char **argv)
             free(rt);
             dsm_log_close();
             return 1;
+        }
+    }
+
+    /* --- FASE C: Espera bootstrap (ventana para que peers hagan listen()) --- */
+    if (rt->n_nodes > 1u && rt->hb != NULL) {
+        uint64_t bootstrap_deadline = dsm_now_ms() + rt->cfg.bootstrap_timeout_ms;
+        DSM_LOG(DSM_LOG_INFO, "nodo %u: esperando peers (bootstrap %u ms)...",
+                cfg.node_id, rt->cfg.bootstrap_timeout_ms);
+
+        while (dsm_now_ms() < bootstrap_deadline) {
+            int all_alive = 1;
+            for (uint32_t i = 0; i < DSM_MAX_PEERS; i++) {
+                const dsm_peer_t *p = dsm_nodes_get(&rt->nodes, i);
+                if (p == NULL || i == cfg.node_id) continue;
+                if (!dsm_heartbeat_alive(rt->hb, i)) {
+                    all_alive = 0;
+                    break;
+                }
+            }
+            if (all_alive) {
+                DSM_LOG(DSM_LOG_INFO, "nodo %u: todos peers respondieron en bootstrap", cfg.node_id);
+                break;
+            }
+            sleep_ms(100);
+        }
+        /* Log de peers que no respondieron */
+        for (uint32_t i = 0; i < DSM_MAX_PEERS; i++) {
+            const dsm_peer_t *p = dsm_nodes_get(&rt->nodes, i);
+            if (p && i != cfg.node_id && !dsm_heartbeat_alive(rt->hb, i)) {
+                uint64_t elapsed = dsm_now_ms() - (bootstrap_deadline - rt->cfg.bootstrap_timeout_ms);
+                DSM_LOG(DSM_LOG_WARN, "nodo %u: peer %u no respondió en bootstrap (%.0f ms)",
+                        cfg.node_id, i, (double)elapsed);
+            }
         }
     }
 

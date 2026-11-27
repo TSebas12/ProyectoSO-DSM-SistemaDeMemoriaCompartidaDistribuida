@@ -21,8 +21,6 @@
 #include "dsm_app_common.h"
 #include "dsm_runtime.h"
 
-#define APP_BARRIER_MS 60000u
-
 int dsm_app_matrices_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
 {
     uint32_t n     = (opts->size == 0) ? 64u : opts->size;
@@ -62,10 +60,10 @@ int dsm_app_matrices_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
             }
         }
     }
-    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
-        fprintf(stderr, "nodo %u: matrices: fallo la barrera 'inicializacion de A y B'. "
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: matrices: fallo la barrera 'inicializacion de A y B' (timeout %u ms). "
                         "Arranca los dos nodos con menos de 2 minutos de diferencia.\n",
-                rank);
+                rank, rt->cfg.barrier_timeout_ms);
         return 1;
     }
 
@@ -84,10 +82,10 @@ int dsm_app_matrices_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         }
     }
     t1 = dsm_app_now_us();
-    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
-        fprintf(stderr, "nodo %u: matrices: fallo la barrera 'fin del calculo'. "
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: matrices: fallo la barrera 'fin del calculo' (timeout %u ms). "
                         "Arranca los dos nodos con menos de 2 minutos de diferencia.\n",
-                rank);
+                rank, rt->cfg.barrier_timeout_ms);
         return 1;
     }
 

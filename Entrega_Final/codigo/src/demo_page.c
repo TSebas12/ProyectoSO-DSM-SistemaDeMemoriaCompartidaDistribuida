@@ -29,16 +29,18 @@
 /*
  * La barrera devuelve error si el otro nodo no llega a tiempo. Si se ignora,
  * la demo sigue con datos que todavía no existen y la evidencia sale mal.
+ * Usa barrier_timeout_ms del config, con fallback a DSM_DEMO_BARRIER_MS.
  */
 static int demo_barrier(dsm_runtime_t *rt, const char *etapa)
 {
-    dsm_status_t st = dsm_barrier(rt, DSM_DEMO_BARRIER_MS);
+    uint32_t timeout = rt->cfg.barrier_timeout_ms ? rt->cfg.barrier_timeout_ms : DSM_DEMO_BARRIER_MS;
+    dsm_status_t st = dsm_barrier(rt, timeout);
 
     if (st != DSM_OK) {
         fprintf(stderr,
-                "nodo %u: demo: la barrera '%s' fallo (%s). "
+                "nodo %u: demo: la barrera '%s' fallo (%s) [timeout=%u ms]. "
                 "Arranca los dos nodos con menos de 2 minutos de diferencia.\n",
-                dsm_node_id(rt), etapa, dsm_status_name(st));
+                dsm_node_id(rt), etapa, dsm_status_name(st), timeout);
         return -1;
     }
     return 0;

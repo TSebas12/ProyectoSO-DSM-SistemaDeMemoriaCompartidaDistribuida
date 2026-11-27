@@ -41,6 +41,15 @@ typedef struct dsm_config {
     char     log_file[256];
     uint32_t stats_interval_ms;
     uint32_t barrier_timeout_ms;
+
+    /* --- FASE C: Timeouts diferenciados y política de estabilidad --- */
+    uint32_t bootstrap_timeout_ms;      /* Ventana para que todos nodos hagan listen()   */
+    uint32_t shutdown_timeout_ms;       /* Tiempo máx para cierre ordenado              */
+    uint32_t heartbeat_missed_max;      /* Pings fallados consecutivos antes de "caído" */
+    uint32_t rpc_max_retries;           /* Reintentos máximos por RPC                   */
+    uint32_t rpc_backoff_base_ms;       /* Base para backoff exponencial (ms)           */
+    uint32_t rpc_max_total_ms;          /* Techo tiempo total RPC (intentos+backoffs)   */
+
     uint32_t replication_factor;
     uint32_t checkpoint_interval_ms;
     uint32_t scheduler_policy;
@@ -49,7 +58,7 @@ typedef struct dsm_config {
     uint32_t reserved32;
 } dsm_config_t;
 
-_Static_assert(sizeof(dsm_config_t) == 704, "dsm_config_t debe medir 704 bytes");
+_Static_assert(sizeof(dsm_config_t) == 728, "dsm_config_t debe medir 728 bytes");
 
 dsm_status_t dsm_config_defaults(dsm_config_t *cfg);
 dsm_status_t dsm_config_load(const char *path, dsm_config_t *cfg);

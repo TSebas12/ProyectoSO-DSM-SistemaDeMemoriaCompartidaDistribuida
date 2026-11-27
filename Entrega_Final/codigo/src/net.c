@@ -249,6 +249,7 @@ static int peer_acquire(dsm_net_t *net, uint32_t node, uint32_t timeout_ms)
 {
     dsm_peer_conn_t *c;
     const dsm_peer_t *peer;
+    uint64_t connect_start_us = 0;
 
     if (net == NULL || node >= DSM_MAX_PEERS || node == net->cfg.node_id) {
         return -1;
@@ -270,12 +271,21 @@ static int peer_acquire(dsm_net_t *net, uint32_t node, uint32_t timeout_ms)
     if (c->fd < 0) {
         DSM_LOG(DSM_LOG_DEBUG, "peer_acquire: connecting to node %u at %s:%u",
                 node, peer->host, (unsigned)peer->port);
+        connect_start_us = now_us();
         c->fd = connect_with_timeout(peer->host, peer->port,
                                      net->cfg.connect_timeout_ms);
         if (c->fd < 0) {
             DSM_LOG(DSM_LOG_DEBUG, "peer_acquire: connect failed for node %u", node);
             dsm_mutex_unlock(&c->lock);
             return -1;
+        }
+        /* Log si la conexión tardó más de la mitad del timeout configurado */
+        uint64_t connect_elapsed_ms = (now_us() - connect_start_us) / 1000u;
+        uint32_t connect_threshold = net->cfg.connect_timeout_ms / 2u;
+        if (connect_elapsed_ms > connect_threshold) {
+            DSM_LOG(DSM_LOG_INFO,
+                    "net: conexión a nodo %u tardó %llu ms (umbral %u ms)",
+                    node, (unsigned long long)connect_elapsed_ms, connect_threshold);
         }
     }
     set_timeouts(c->fd, (timeout_ms == 0) ? net->cfg.network_timeout_ms : timeout_ms);
@@ -368,18 +378,35 @@ static dsm_status_t rpc(dsm_net_t *net, uint32_t dst, const dsm_msg_t *req,
                         dsm_msg_t *resp, uint32_t timeout_ms)
 {
     dsm_status_t st = DSM_ERR_NET;
-    uint32_t     attempt;
-    uint32_t     max_attempts;
+    uint32_t     attempt = 0;
+    uint64_t     start_us = now_us();
+    uint32_t     max_total_us = net->cfg.rpc_max_total_ms * 1000u;
+    uint32_t     max_retries = net->cfg.rpc_max_retries;
 
     if (net == NULL || req == NULL || resp == NULL) {
         return DSM_ERR_INVAL;
     }
-    max_attempts = net->cfg.retry_count + 1u;
-    for (attempt = 0; attempt < max_attempts; attempt++) {
-        uint64_t t0 = now_us();
 
+    while (attempt <= max_retries) {
+        /* Chequeo presupuesto de tiempo total */
+        uint64_t elapsed_us = now_us() - start_us;
+        if (elapsed_us >= max_total_us) {
+            DSM_LOG(DSM_LOG_WARN,
+                    "rpc: presupuesto total excedido (%u ms) hacia nodo %u tras %u intentos",
+                    net->cfg.rpc_max_total_ms, dst, attempt);
+            if (net->stats != NULL) {
+                dsm_stats_inc(net->stats, DSM_STAT_TIMEOUTS);
+            }
+            return DSM_ERR_TIMEOUT;
+        }
+
+        uint32_t remaining_ms = (uint32_t)((max_total_us - elapsed_us) / 1000u);
+        uint32_t this_timeout = (remaining_ms < timeout_ms) ? remaining_ms : timeout_ms;
+
+        uint64_t t0 = now_us();
         memset(resp, 0, sizeof(*resp));
-        st = rpc_once(net, dst, req, resp, timeout_ms);
+        st = rpc_once(net, dst, req, resp, this_timeout);
+
         if (net->stats != NULL) {
             dsm_stats_inc(net->stats, DSM_STAT_RPC_COUNT);
             dsm_stats_add(net->stats, DSM_STAT_RPC_LATENCY_US, now_us() - t0);
@@ -397,18 +424,22 @@ static dsm_status_t rpc(dsm_net_t *net, uint32_t dst, const dsm_msg_t *req,
             } else if (st != DSM_ERR_PEER_DOWN) {
                 dsm_stats_inc(net->stats, DSM_STAT_ERRORS);
             }
-            if (attempt + 1u < max_attempts) {
+            if (attempt < max_retries) {
                 dsm_stats_inc(net->stats, DSM_STAT_RETRIES);
             }
         }
-        if (attempt + 1u < max_attempts) {
-            uint32_t backoff = net->cfg.retry_backoff_ms * (attempt + 1u);
+        if (attempt < max_retries) {
+            /* Backoff exponencial: base * 2^attempt */
+            uint32_t backoff = net->cfg.rpc_backoff_base_ms * (1u << attempt);
+            DSM_LOG(DSM_LOG_INFO,
+                    "rpc: intento %u fallo (%s), backoff %u ms, nodo %u",
+                    attempt + 1, dsm_status_name(st), backoff, dst);
             struct timespec ts;
-
             ts.tv_sec  = (time_t)(backoff / 1000u);
             ts.tv_nsec = (long)(backoff % 1000u) * 1000000L;
             nanosleep(&ts, NULL);
         }
+        attempt++;
     }
     return st;
 }

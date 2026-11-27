@@ -26,7 +26,6 @@
 #include "dsm_app_common.h"
 #include "dsm_runtime.h"
 
-#define APP_BARRIER_MS 60000u
 #define APP_TASK_DEFAULT_N 1000000u
 
 typedef struct task_result {
@@ -85,8 +84,8 @@ int dsm_app_task_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         printf("nodo 0 (coordinador): tarea preparada, N=%llu elementos\n",
                (unsigned long long)n);
     }
-    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
-        fprintf(stderr, "nodo %u: task: fallo la barrera 'preparacion'\n", rank);
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: task: fallo la barrera 'preparacion' (timeout %u ms)\n", rank, rt->cfg.barrier_timeout_ms);
         return 1;
     }
 
@@ -121,8 +120,8 @@ int dsm_app_task_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
             slot->time_us  = t1 - t0;
         }
     }
-    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
-        fprintf(stderr, "nodo %u: task: fallo la barrera 'computo'\n", rank);
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: task: fallo la barrera 'computo' (timeout %u ms)\n", rank, rt->cfg.barrier_timeout_ms);
         return 1;
     }
 
@@ -170,8 +169,8 @@ int dsm_app_task_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
                (unsigned long long)(start + count), (unsigned long long)(t1 - t0));
     }
 
-    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
-        fprintf(stderr, "nodo %u: task: fallo la barrera final\n", rank);
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: task: fallo la barrera final (timeout %u ms)\n", rank, rt->cfg.barrier_timeout_ms);
     }
     return 0;
 }

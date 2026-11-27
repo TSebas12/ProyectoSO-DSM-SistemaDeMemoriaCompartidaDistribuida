@@ -19,6 +19,8 @@
 #include <string.h>
 #include <time.h>
 
+#include "dsm_config.h"
+#include "dsm_log.h"
 #include "dsm_net.h"
 #include "dsm_nodes.h"
 #include "dsm_sync.h"
@@ -30,6 +32,7 @@ struct dsm_heartbeat {
     int            started;
     _Atomic int    alive[DSM_MAX_PEERS];
     uint64_t       last_seen_ms[DSM_MAX_PEERS];
+    _Atomic int    consecutive_missed[DSM_MAX_PEERS];
 };
 
 static void hb_sleep_ms(uint32_t ms)
@@ -74,8 +77,20 @@ static void *heartbeat_loop(void *arg)
             if (st == DSM_OK) {
                 atomic_store_explicit(&hb->alive[i], 1, memory_order_relaxed);
                 hb->last_seen_ms[i] = dsm_now_ms();
+                atomic_store_explicit(&hb->consecutive_missed[i], 0, memory_order_relaxed);
             } else {
-                atomic_store_explicit(&hb->alive[i], 0, memory_order_relaxed);
+                int missed = atomic_fetch_add_explicit(&hb->consecutive_missed[i], 1,
+                                                        memory_order_relaxed) + 1;
+                if (missed >= (int)rt->cfg.heartbeat_missed_max) {
+                    atomic_store_explicit(&hb->alive[i], 0, memory_order_relaxed);
+                    DSM_LOG(DSM_LOG_WARN,
+                            "heartbeat: nodo %u declarado caído tras %d pings fallados consecutivos",
+                            i, missed);
+                } else {
+                    DSM_LOG(DSM_LOG_DEBUG,
+                            "heartbeat: nodo %u ping fallado %d/%u",
+                            i, missed, rt->cfg.heartbeat_missed_max);
+                }
             }
         }
     }
@@ -99,6 +114,7 @@ dsm_heartbeat_t *dsm_heartbeat_start(dsm_runtime_t *rt)
     for (i = 0; i < DSM_MAX_PEERS; i++) {
         atomic_store_explicit(&hb->alive[i], (i == rt->cfg.node_id) ? 1 : 0,
                               memory_order_relaxed);
+        atomic_init(&hb->consecutive_missed[i], 0);
         hb->last_seen_ms[i] = UINT64_MAX;
     }
     hb->last_seen_ms[rt->cfg.node_id] = dsm_now_ms();

@@ -149,6 +149,15 @@ dsm_status_t dsm_config_defaults(dsm_config_t *cfg)
     snprintf(cfg->log_file, sizeof(cfg->log_file), "logs/dsm.log");
     cfg->stats_interval_ms     = 5000;
     cfg->barrier_timeout_ms    = 30000;
+
+    /* --- FASE C: Timeouts diferenciados y política de estabilidad --- */
+    cfg->bootstrap_timeout_ms   = 15000;  /* 15s: ventana para que todos hagan listen() */
+    cfg->shutdown_timeout_ms    = 5000;   /* 5s:  cierre ordenado                    */
+    cfg->heartbeat_missed_max   = 3;      /* 3 pings fallados consecutivos            */
+    cfg->rpc_max_retries        = 3;      /* 3 reintentos máximos por RPC             */
+    cfg->rpc_backoff_base_ms    = 100;    /* 100ms base para backoff exponencial      */
+    cfg->rpc_max_total_ms       = 25000;  /* 25s techo tiempo total RPC (compat con network_timeout=5000) */
+
     cfg->replication_factor    = 0;
     cfg->checkpoint_interval_ms = 0;
     cfg->scheduler_policy      = 0;            /* round_robin              */
@@ -278,6 +287,24 @@ dsm_status_t dsm_config_load(const char *path, dsm_config_t *cfg)
         } else if (strcmp(key, "barrier_timeout_ms") == 0 &&
                    parse_unsigned(val, &u) == 0) {
             cfg->barrier_timeout_ms = (uint32_t)u;
+        } else if (strcmp(key, "bootstrap_timeout_ms") == 0 &&
+                   parse_unsigned(val, &u) == 0) {
+            cfg->bootstrap_timeout_ms = (uint32_t)u;
+        } else if (strcmp(key, "shutdown_timeout_ms") == 0 &&
+                   parse_unsigned(val, &u) == 0) {
+            cfg->shutdown_timeout_ms = (uint32_t)u;
+        } else if (strcmp(key, "heartbeat_missed_max") == 0 &&
+                   parse_unsigned(val, &u) == 0) {
+            cfg->heartbeat_missed_max = (uint32_t)u;
+        } else if (strcmp(key, "rpc_max_retries") == 0 &&
+                   parse_unsigned(val, &u) == 0) {
+            cfg->rpc_max_retries = (uint32_t)u;
+        } else if (strcmp(key, "rpc_backoff_base_ms") == 0 &&
+                   parse_unsigned(val, &u) == 0) {
+            cfg->rpc_backoff_base_ms = (uint32_t)u;
+        } else if (strcmp(key, "rpc_max_total_ms") == 0 &&
+                   parse_unsigned(val, &u) == 0) {
+            cfg->rpc_max_total_ms = (uint32_t)u;
         } else if (strcmp(key, "replication_factor") == 0 &&
                    parse_unsigned(val, &u) == 0) {
             cfg->replication_factor = (uint32_t)u;
@@ -373,6 +400,35 @@ dsm_status_t dsm_config_validate(const dsm_config_t *cfg)
     if (cfg->replication_factor > cfg->max_nodes - 1u) {
         return DSM_ERR_INVAL;
     }
+    /* --- FASE C: Validaciones de timeouts diferenciados --- */
+    if (cfg->heartbeat_missed_max < 2u) {
+        return DSM_ERR_INVAL;
+    }
+    if (cfg->rpc_max_retries > 10u) {
+        return DSM_ERR_INVAL;
+    }
+    if (cfg->rpc_backoff_base_ms == 0u) {
+        return DSM_ERR_INVAL;
+    }
+    /* rpc_max_total_ms debe cubrir al menos (retries+1)*network_timeout + suma backoffs */
+    {
+        uint32_t min_total = (cfg->rpc_max_retries + 1u) * cfg->network_timeout_ms;
+        uint32_t u;
+        for (u = 1u; u <= cfg->rpc_max_retries; u++) {
+            min_total += cfg->rpc_backoff_base_ms * (1u << (u - 1u));
+        }
+        if (cfg->rpc_max_total_ms < min_total) {
+            return DSM_ERR_INVAL;
+        }
+    }
+    /* bootstrap_timeout_ms >= 2 * connect_timeout_ms (para 2 intentos de conexión) */
+    if (cfg->bootstrap_timeout_ms < 2u * cfg->connect_timeout_ms) {
+        return DSM_ERR_INVAL;
+    }
+    /* shutdown_timeout_ms >= 1000ms (mínimo razonable) */
+    if (cfg->shutdown_timeout_ms < 1000u) {
+        return DSM_ERR_INVAL;
+    }
     return DSM_OK;
 }
 
@@ -407,6 +463,13 @@ uint32_t dsm_config_fingerprint(const dsm_config_t *cfg, const dsm_nodes_t *node
     MIX(cfg->connect_timeout_ms);
     MIX(cfg->thread_pool_size);
     MIX(cfg->barrier_timeout_ms);
+    /* FASE C: nuevos timeouts en huella */
+    MIX(cfg->bootstrap_timeout_ms);
+    MIX(cfg->shutdown_timeout_ms);
+    MIX(cfg->heartbeat_missed_max);
+    MIX(cfg->rpc_max_retries);
+    MIX(cfg->rpc_backoff_base_ms);
+    MIX(cfg->rpc_max_total_ms);
     MIX(DSM_PROTOCOL_VERSION);
 
     if (nodes != NULL) {
@@ -473,6 +536,13 @@ dsm_status_t dsm_config_save(const char *path, const dsm_config_t *cfg)
     fprintf(f, "log_file = %s\n", cfg->log_file);
     fprintf(f, "stats_interval_ms = %u\n", cfg->stats_interval_ms);
     fprintf(f, "barrier_timeout_ms = %u\n", cfg->barrier_timeout_ms);
+    /* FASE C: nuevos timeouts */
+    fprintf(f, "bootstrap_timeout_ms = %u\n", cfg->bootstrap_timeout_ms);
+    fprintf(f, "shutdown_timeout_ms = %u\n", cfg->shutdown_timeout_ms);
+    fprintf(f, "heartbeat_missed_max = %u\n", cfg->heartbeat_missed_max);
+    fprintf(f, "rpc_max_retries = %u\n", cfg->rpc_max_retries);
+    fprintf(f, "rpc_backoff_base_ms = %u\n", cfg->rpc_backoff_base_ms);
+    fprintf(f, "rpc_max_total_ms = %u\n", cfg->rpc_max_total_ms);
     fprintf(f, "replication_factor = %u\n", cfg->replication_factor);
     fprintf(f, "checkpoint_interval_ms = %u\n", cfg->checkpoint_interval_ms);
     fprintf(f, "scheduler_policy = %u\n", cfg->scheduler_policy);

@@ -20,7 +20,6 @@
 #include "dsm_app_common.h"
 #include "dsm_runtime.h"
 
-#define APP_BARRIER_MS 120000u
 #define APP_MAX_PAGES  8192u
 
 int dsm_app_evict_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
@@ -63,8 +62,8 @@ int dsm_app_evict_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
     for (i = rank; i < pages; i += nodes) {
         buf[(size_t)i * page_size] = (uint8_t)((i + rank) & 0xFFu);
     }
-    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
-        fprintf(stderr, "nodo %u: evict: fallo la barrera tras la escritura\n", rank);
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: evict: fallo la barrera tras la escritura (timeout %u ms)\n", rank, rt->cfg.barrier_timeout_ms);
         return 3;
     }
     printf("nodo %u: evict: primera pasada lista\n", rank);
@@ -93,8 +92,8 @@ int dsm_app_evict_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         }
         printf("nodo %u: evict: verificacion OK\n", rank);
     }
-    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
-        fprintf(stderr, "nodo %u: evict: fallo la barrera tras la lectura\n", rank);
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: evict: fallo la barrera tras la lectura (timeout %u ms)\n", rank, rt->cfg.barrier_timeout_ms);
         return 3;
     }
     printf("nodo %u: evict: segunda pasada lista\n", rank);

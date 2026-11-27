@@ -25,8 +25,6 @@
 #include "dsm_app_common.h"
 #include "dsm_runtime.h"
 
-#define APP_BARRIER_MS 60000u
-
 static void print_rate(const char *label, uint32_t rank, uint64_t ops,
                        uint64_t total_us, uint64_t bytes)
 {
@@ -81,10 +79,10 @@ int dsm_app_bench_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
             memset(buf + (size_t)i * page_size, (int)(rank + 1u), page_size);
         }
     }
-    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
-        fprintf(stderr, "nodo %u: bench: fallo la barrera 'distribucion inicial'. "
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: bench: fallo la barrera 'distribucion inicial' (timeout %u ms). "
                         "Arranca los dos nodos con menos de 2 minutos de diferencia.\n",
-                rank);
+                rank, rt->cfg.barrier_timeout_ms);
         return 1;
     }
 
@@ -121,10 +119,10 @@ int dsm_app_bench_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
     print_rate("escritura remota", rank, iters, t1 - t0,
                (uint64_t)iters * (uint64_t)page_size);
 
-    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
-        fprintf(stderr, "nodo %u: bench: fallo la barrera 'fin de las fases'. "
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: bench: fallo la barrera 'fin de las fases' (timeout %u ms). "
                         "Arranca los dos nodos con menos de 2 minutos de diferencia.\n",
-                rank);
+                rank, rt->cfg.barrier_timeout_ms);
         return 1;
     }
     printf("nodo %u: bench: %u paginas, %u operaciones por fase (suma %llu)\n",

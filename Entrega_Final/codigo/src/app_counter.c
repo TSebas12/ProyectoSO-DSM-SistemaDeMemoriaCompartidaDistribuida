@@ -24,7 +24,6 @@
 #include "dsm_app_common.h"
 #include "dsm_runtime.h"
 
-#define APP_BARRIER_MS 60000u
 #define APP_MAX_THREADS 16u
 
 typedef struct counter_arg {
@@ -111,10 +110,10 @@ int dsm_app_counter_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         }
     }
 
-    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
-        fprintf(stderr, "nodo %u: counter: fallo la barrera 'fin de los incrementos'. "
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: counter: fallo la barrera 'fin de los incrementos' (timeout %u ms). "
                         "Arranca los dos nodos con menos de 2 minutos de diferencia.\n",
-                rank);
+                rank, rt->cfg.barrier_timeout_ms);
         return 1;
     }
 

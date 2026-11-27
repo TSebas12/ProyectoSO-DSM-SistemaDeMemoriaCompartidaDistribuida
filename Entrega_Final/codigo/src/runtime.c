@@ -233,6 +233,9 @@ void dsm_runtime_destroy(dsm_runtime_t *rt)
     if (rt == NULL) {
         return;
     }
+    /* Deadline para cierre ordenado (FASE C) */
+    uint64_t shutdown_deadline = dsm_now_ms() + rt->cfg.shutdown_timeout_ms;
+
     if (rt->web != NULL) {
         dsm_web_stop(rt->web);
         rt->web = NULL;
@@ -248,6 +251,13 @@ void dsm_runtime_destroy(dsm_runtime_t *rt)
     }
     if (atomic_load(&rt->running)) {
         dsm_fault_shutdown();
+        /* Join con deadline para evitar bloqueo indefinido */
+        struct timespec ts;
+        while (atomic_load(&rt->running) && dsm_now_ms() < shutdown_deadline) {
+            ts.tv_sec = 0;
+            ts.tv_nsec = 10000000L; /* 10 ms */
+            nanosleep(&ts, NULL);
+        }
         pthread_join(rt->resolver_thread, NULL);
         atomic_store(&rt->running, 0);
     }

@@ -307,7 +307,7 @@ git fetch origin
 git reset --hard origin/main
 git switch -c daniel/final
 git config user.name "Monterrosa"
-git config user.email "djmonte2012@gmail.com"
+git config user.email "estudiante@itcr.ac.cr"
 ```
 
 Si tiene trabajo sin commitear, que lo guarde en otra rama antes del `reset`.

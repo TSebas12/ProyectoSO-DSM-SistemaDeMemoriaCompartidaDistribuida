@@ -21,8 +21,6 @@
 #include "dsm_app_common.h"
 #include "dsm_runtime.h"
 
-#define APP_BARRIER_MS 60000u
-
 int dsm_app_file_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
 {
     uint32_t  rank  = dsm_node_id(rt);
@@ -79,10 +77,10 @@ int dsm_app_file_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
                    (unsigned long long)size);
         }
     }
-    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
-        fprintf(stderr, "nodo %u: file: fallo la barrera 'carga del archivo'. "
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: file: fallo la barrera 'carga del archivo' (timeout %u ms). "
                         "Arranca los dos nodos con menos de 2 minutos de diferencia.\n",
-                rank);
+                rank, rt->cfg.barrier_timeout_ms);
         return 1;
     }
     if (((uint64_t *)partial)[0] == 1u) {
@@ -97,10 +95,10 @@ int dsm_app_file_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
      * compartidos. */
     ((uint64_t *)(partial + (size_t)rank * page_size))[0] = (uint64_t)local_hash;
 
-    if (dsm_barrier(rt, APP_BARRIER_MS) != DSM_OK) {
-        fprintf(stderr, "nodo %u: file: fallo la barrera 'checksum'. "
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: file: fallo la barrera 'checksum' (timeout %u ms). "
                         "Arranca los dos nodos con menos de 2 minutos de diferencia.\n",
-                rank);
+                rank, rt->cfg.barrier_timeout_ms);
         return 1;
     }
 

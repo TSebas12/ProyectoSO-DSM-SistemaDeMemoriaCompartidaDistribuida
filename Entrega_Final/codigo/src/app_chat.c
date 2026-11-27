@@ -170,8 +170,8 @@ int dsm_app_chat_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
         }
     }
 
-    if (dsm_barrier(rt, 120000u) != DSM_OK) {
-        fprintf(stderr, "nodo %u: chat: fallo la barrera inicial\n", rank);
+    if (dsm_barrier(rt, rt->cfg.barrier_timeout_ms) != DSM_OK) {
+        fprintf(stderr, "nodo %u: chat: fallo la barrera inicial (timeout %u ms)\n", rank, rt->cfg.barrier_timeout_ms);
         free(slots);
         free(last_seq);
         return 1;
@@ -290,7 +290,7 @@ int dsm_app_chat_run(dsm_runtime_t *rt, const dsm_app_opts_t *opts)
     }
 
     /* Barrera final best-effort: no bloquear si alguien salió antes. */
-    (void)dsm_barrier(rt, 10000u);
+    (void)dsm_barrier(rt, rt->cfg.barrier_timeout_ms);
 
     free(slots);
     free(last_seq);
