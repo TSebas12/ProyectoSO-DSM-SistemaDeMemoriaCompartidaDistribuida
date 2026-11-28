@@ -968,56 +968,68 @@ do_monitor_memory() {
         echo "[$(color_cyan 'a')] Alternar  [$(color_cyan 'r')] Refrescar  [$(color_cyan 'b')] Volver"
         echo
 
-        # Obtener stats de memoria via dsmctl
-        local mem_output
-        mem_output=$(./dsmctl --config "$cfg" stats 2>/dev/null || true)
-
-        # Parsear valores (adaptar según salida real de dsmctl)
-        local total_frames=256 free_frames=0 used_frames=0
-        local m_count=0 s_count=0 i_count=0 swap_bytes=0
-
-        # Intentar extraer de stats (formato puede variar)
-        # Valores por defecto para demo
         local nodes=("$IP_A" "$IP_B" "$IP_C" "$IP_D")
-        local ports=(27300 27304 27308 27312)
+        local ports=(27301 27305 27309 27313)  # control ports
 
         echo "┌─────────────────────────────────────────────────────────────┐"
         echo "│ $(color_bold 'MARCOS POR NODO')                                              │"
-        echo "├─────┬──────────┬────────┬────────┬───────┬──────┬──────────┤"
-        printf '│ %-3s │ %-8s │ %-6s │ %-6s │ %-5s │ %-4s │ %-8s │\n' "Nodo" "Total" "Libres" "Usados" "% Uso" "Swap" "MSI"
-        echo "├─────┼──────────┼────────┼────────┼───────┼──────┼──────────┤"
+        echo "├─────┬──────────┬────────┬────────┬───────┬─────────┬──────────┤"
+        printf '│ %-3s │ %-8s │ %-6s │ %-6s │ %-5s │ %-7s │ %-8s │\n' "Nodo" "Total" "Libres" "Usados" "% Uso" "Swap (KB)" "MSI"
+        echo "├─────┼──────────┼────────┼────────┼───────┼─────────┼──────────┤"
 
         for ((i=0; i<TOPOLOGY; i++)); do
             ip="${nodes[$i]:-}"
             port="${ports[$i]:-}"
             [ -z "$ip" ] && continue
 
-            # Simular valores (en producción parsear de dsmctl stats por nodo)
-            local t=256 f=$((RANDOM % 200)) u=$((t - f)) pct=$((u * 100 / t))
-            local swap=$((RANDOM % 3)) m=$((RANDOM % 50)) s=$((RANDOM % 50)) inv=$((t - m - s))
+            # Query real stats via dsmctl
+            local stats_output
+            stats_output=$(./dsmctl --host "$ip" --port "$port" stats 2>/dev/null || true)
+
+            # Parse stats: "marcos libres" and "paginas residentes"
+            local free_frames resident_pages swap_bytes
+            free_frames=$(echo "$stats_output" | grep -E '^marcos libres' | awk '{print $NF}' 2>/dev/null || echo "0")
+            resident_pages=$(echo "$stats_output" | grep -E '^paginas residentes' | awk '{print $NF}' 2>/dev/null || echo "0")
+            swap_bytes=$(echo "$stats_output" | grep -E '^bytes de swap' | awk '{print $NF}' 2>/dev/null || echo "0")
+            local errors=$(echo "$stats_output" | grep -E '^errores' | awk '{print $NF}' 2>/dev/null || echo "0")
+
+            local total_frames=256
+            local used_frames=$((total_frames - free_frames))
+            local pct=$(( used_frames * 100 / total_frames ))
+            local swap_kb=$(( swap_bytes / 1024 ))
+
+            # MSI states not directly available via stats, mark as N/A
+            local m_count=0 s_count=0 i_count=0
 
             local pct_color="$RESET"
             [ $pct -gt 70 ] && pct_color="$RED"
             [ $pct -gt 40 ] && [ $pct -le 70 ] && pct_color="$YELLOW"
             [ $pct -le 40 ] && pct_color="$GREEN"
 
-            printf '│ %-3s │ %-8s │ %-6s │ %-6s │ %s%3d%%%s │ %3dMB │ M:%-2d S:%-2d │\n' \
-                "$i" "$t" "$f" "$u" "$pct_color" "$pct" "$RESET" "$swap" "$m" "$s"
+            printf '│ %-3s │ %-8s │ %-6s │ %-6s │ %s%3d%%%s │ %7d │ M:%-2d S:%-2d │\n' \
+                "$i" "$total_frames" "$free_frames" "$used_frames" "$pct_color" "$pct" "$RESET" "$swap_kb" "$m_count" "$s_count"
         done
-        echo "└─────┴──────────┴────────┴────────┴───────┴──────┴──────────┘"
+        echo "└─────┴──────────┴────────┴────────┴───────┴─────────┴──────────┘"
         echo
 
         echo "$(color_bold 'Gráfico de uso (%):')"
         for ((i=0; i<TOPOLOGY; i++)); do
             ip="${nodes[$i]:-}"
             [ -z "$ip" ] && continue
-            local pct=$((RANDOM % 100))
+            # Query real usage for graph
+            local stats_output
+            stats_output=$(./dsmctl --host "$ip" --port "${ports[$i]}" stats 2>/dev/null || true)
+            local free_frames
+            free_frames=$(echo "$stats_output" | grep -E '^marcos libres' | awk '{print $NF}' 2>/dev/null || echo "0")
+            local used_frames=$((256 - free_frames))
+            local pct=$(( used_frames * 100 / 256 ))
             local bar
             bar=$(draw_ascii_bar "$pct")
             printf '  Nodo %d %s %3d%%\n' "$i" "$bar" "$pct"
         done
         echo
         echo "Leyenda MSI: $(color_bold 'M')=Modified  $(color_bold 'S')=Shared  $(color_bold 'I')=Invalid"
+        echo "$(color_yellow 'Nota:') MSI por nodo no disponible via dsmctl stats; se muestran solo métricas de memoria."
 
         if [ "$auto_refresh" = true ]; then
             local key

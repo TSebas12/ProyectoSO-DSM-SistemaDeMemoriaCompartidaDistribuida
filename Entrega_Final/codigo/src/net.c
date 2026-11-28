@@ -200,6 +200,7 @@ static int connect_with_timeout(const char *host, uint16_t port, uint32_t timeou
     int                err = 0;
     socklen_t          elen = sizeof(err);
     int                flags;
+    struct linger      lg = { .l_onoff = 1, .l_linger = 0 };  // SO_LINGER para evitar TIME_WAIT
 
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -212,6 +213,8 @@ static int connect_with_timeout(const char *host, uint16_t port, uint32_t timeou
     if (fd < 0) {
         return -1;
     }
+    /* SO_LINGER con l_linger=0: close() retorna inmediatamente y envía RST */
+    setsockopt(fd, SOL_SOCKET, SO_LINGER, &lg, sizeof(lg));
     flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
         close(fd);
@@ -819,6 +822,8 @@ dsm_status_t dsm_net_start(dsm_net_t *net)
     if (net->listen_fd < 0) {
         return DSM_ERR_NET;
     }
+    struct linger lg = { .l_onoff = 1, .l_linger = 0 };
+    setsockopt(net->listen_fd, SOL_SOCKET, SO_LINGER, &lg, sizeof(lg));
     setsockopt(net->listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;

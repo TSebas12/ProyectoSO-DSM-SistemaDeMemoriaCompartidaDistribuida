@@ -969,7 +969,12 @@ static dsm_status_t home_serve_read(dsm_coherence_t *co, dsm_dir_entry_t *d,
     dsm_status_t st;
 
     if (owner != co->home_node) {
+        /* Release op_lock before RPC to avoid holding GLOBAL lock during network I/O */
+        dsm_mutex_unlock(&d->op_lock);
         st = forward_from_owner(co, d, owner, 0, buf);
+        if (dsm_mutex_lock(&d->op_lock) != DSM_OK) {
+            return DSM_ERR_STATE;
+        }
         if (st != DSM_OK) {
             dsm_mutex_unlock(&d->op_lock);
             return st;
@@ -996,11 +1001,6 @@ static dsm_status_t home_serve_read(dsm_coherence_t *co, dsm_dir_entry_t *d,
     }
     d->meta.version++;
     d->meta.last_update_ms = dsm_now_ms();
-    /*
-     * El op_lock se libera aquí, en el servicio, para que el llamador no tenga
-     * que hacerlo y para que local_drop (que toma el lock de página) no se
-     * ejecute con el op_lock tomado.
-     */
     dsm_mutex_unlock(&d->op_lock);
     return DSM_OK;
 }
@@ -1015,7 +1015,12 @@ static dsm_status_t home_serve_write(dsm_coherence_t *co, dsm_dir_entry_t *d,
     dsm_status_t st;
 
     if (owner != co->home_node) {
+        /* Release op_lock before RPC to avoid holding GLOBAL lock during network I/O */
+        dsm_mutex_unlock(&d->op_lock);
         st = forward_from_owner(co, d, owner, 1, buf);
+        if (dsm_mutex_lock(&d->op_lock) != DSM_OK) {
+            return DSM_ERR_STATE;
+        }
         if (st != DSM_OK) {
             dsm_mutex_unlock(&d->op_lock);
             return st;
@@ -1027,28 +1032,31 @@ static dsm_status_t home_serve_write(dsm_coherence_t *co, dsm_dir_entry_t *d,
             return st;
         }
         d->meta.owner_node = co->home_node;
-        /*
-         * La ventana de escritura local durante la cesión se cierra a nivel
-         * de aplicación: ver app_counter (una página por nodo). A nivel de
-         * núcleo, la cesión se basa en la instantánea capturada en buf y las
-         * escrituras del home que caigan en la ventana no se propagan al nuevo
-         * dueño; por eso las aplicaciones no deben compartir una misma página
-         * de 4 KB entre nodos con escrituras concurrentes.
-         */
     }
 
     /*
      * Invalidación de terceros: sin esto dos nodos podrían escribir la misma
      * página y la última escritura en llegar borraría a la otra.
+     * Capture list of nodes to invalidate before releasing lock, then do RPCs.
      */
     others = d->meta.sharers & ~(1ull << requester) & ~(1ull << co->home_node);
+    /* Capture list of nodes to invalidate */
+    uint32_t invalidate_list[64];
+    uint32_t invalidate_count = 0;
     for (node = 0; node < 64u; node++) {
-        if ((others & (1ull << node)) == 0ull) {
-            continue;
+        if ((others & (1ull << node)) != 0ull) {
+            invalidate_list[invalidate_count++] = node;
         }
+    }
+    /* Release lock and perform invalidations */
+    for (uint32_t i = 0; i < invalidate_count; i++) {
+        node = invalidate_list[i];
+        dsm_mutex_unlock(&d->op_lock);
         st = invalidate_node(co, page_id, node, 0, NULL, NULL);
+        if (dsm_mutex_lock(&d->op_lock) != DSM_OK) {
+            return DSM_ERR_STATE;
+        }
         if (st != DSM_OK) {
-            /* Política fail-stop: no se concede la propiedad a medias.    */
             dsm_mutex_unlock(&d->op_lock);
             return st;
         }
@@ -1154,11 +1162,23 @@ dsm_status_t dsm_coherence_release_page(dsm_coherence_t *co, uint64_t page_id)
             return DSM_ERR_NOMEM;
         }
         others = d->meta.sharers & ~(1ull << co->home_node);
+        /* Capture list of nodes to invalidate */
+        uint32_t invalidate_list[64];
+        uint32_t invalidate_count = 0;
         for (node = 0; node < 64u; node++) {
-            if ((others & (1ull << node)) == 0ull) {
-                continue;
+            if ((others & (1ull << node)) != 0ull) {
+                invalidate_list[invalidate_count++] = node;
             }
+        }
+        /* Release lock and perform invalidations */
+        for (uint32_t i = 0; i < invalidate_count; i++) {
+            node = invalidate_list[i];
+            dsm_mutex_unlock(&d->op_lock);
             st = invalidate_node(co, page_id, node, 0, NULL, NULL);
+            if (dsm_mutex_lock(&d->op_lock) != DSM_OK) {
+                free(buf);
+                return DSM_ERR_STATE;
+            }
             if (st != DSM_OK) {
                 dsm_mutex_unlock(&d->op_lock);
                 free(buf);
@@ -1670,14 +1690,24 @@ static dsm_status_t handle_page_release(dsm_coherence_t *co, const dsm_msg_t *ms
         /*
          * Publicación de una escritura: invalidar a los demás sharers para
          * que no queden copias S obsoletas tras el release.
+         * Capture list of nodes to invalidate before releasing lock, then do RPCs.
          */
         others = d->meta.sharers & ~(1ull << msg->src_node) &
                  ~(1ull << co->home_node);
+        uint32_t invalidate_list[64];
+        uint32_t invalidate_count = 0;
         for (node = 0; node < 64u; node++) {
-            if ((others & (1ull << node)) == 0ull) {
-                continue;
+            if ((others & (1ull << node)) != 0ull) {
+                invalidate_list[invalidate_count++] = node;
             }
+        }
+        for (uint32_t i = 0; i < invalidate_count; i++) {
+            node = invalidate_list[i];
+            dsm_mutex_unlock(&d->op_lock);
             st = invalidate_node(co, msg->page_id, node, 0, NULL, NULL);
+            if (dsm_mutex_lock(&d->op_lock) != DSM_OK) {
+                return send_error(co, msg, DSM_ERR_STATE);
+            }
             if (st != DSM_OK) {
                 dsm_mutex_unlock(&d->op_lock);
                 return send_error(co, msg, st);

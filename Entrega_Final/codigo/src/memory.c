@@ -728,5 +728,12 @@ dsm_status_t dsm_memory_swap_in(dsm_memory_t *mem, uint64_t page_id)
     if (n != (ssize_t)mem->page_size) {
         return DSM_ERR_NET;
     }
+    /* Decrement swap_bytes to reflect current swap usage (not accumulated) */
+    if (mem->swap_bytes >= (uint64_t)mem->page_size) {
+        atomic_fetch_sub_explicit(&mem->swap_bytes, (uint64_t)mem->page_size,
+                                  memory_order_relaxed);
+    } else {
+        atomic_store_explicit(&mem->swap_bytes, 0, memory_order_relaxed);
+    }
     return DSM_OK;
 }
